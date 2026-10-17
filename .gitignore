@@ -17,3 +17,6 @@ coverage.xml
 htmlcov/
 workspace/*
 !workspace/.gitkeep
+
+# Downloaded model weights
+models/
