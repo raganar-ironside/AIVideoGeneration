@@ -1,0 +1,11 @@
+{
+  "duration_seconds": 48,
+  "scene_count": 6,
+  "width": 720,
+  "height": 1280,
+  "fps": 24,
+  "monthly_input_token_limit": 700000,
+  "monthly_output_token_limit": 240000,
+  "monthly_spend_limit_usd": 3.0,
+  "require_review_before_publish": true
+}

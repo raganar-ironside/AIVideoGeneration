@@ -1,0 +1,22 @@
+{
+  "topic": "Rajendra Chola and the Chalukyas",
+  "title": "Rajendra Chola's Campaign",
+  "duration_seconds": 60,
+  "narration": "Rajendra Chola led his forces into battle. The campaign tested the strength of the Chola empire.",
+  "scenes": [
+    {
+      "index": 1,
+      "duration_seconds": 30,
+      "narration": "Rajendra Chola led his forces into battle.",
+      "visual_description": "Illustrative medieval South Indian army assembling for a campaign",
+      "asset_query": "Chola army historical illustration"
+    },
+    {
+      "index": 2,
+      "duration_seconds": 30,
+      "narration": "The campaign tested the strength of the Chola empire.",
+      "visual_description": "Historical map of the Chola and Western Chalukya kingdoms",
+      "asset_query": "Chola Western Chalukya map"
+    }
+  ]
+}
