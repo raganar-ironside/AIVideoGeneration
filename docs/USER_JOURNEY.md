@@ -111,13 +111,13 @@ historyforgeai image --job JOB_ID --scene 1 --provider manual --file /absolute/p
 streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/JOB_ID
 ```
 
-Replace `JOB_ID` with the printed ID. Add/review images for all scenes, approve every scene in Streamlit, then run:
+Replace `JOB_ID` with the printed ID. In Streamlit, first edit any scene narration, visual description, or image query. Click **Save script changes**; this updates `scene_plan.json` and the full narration while preserving the initial AI draft as `original_scene_plan.json`. Then click **Approve current script**. Add/review images for all scenes, approve every scene, and save the storyboard. Edited scenes return to pending image review. Then run:
 
 ```bash
 historyforgeai render --job JOB_ID --generate-audio --scene-audio --motion zoom_in
 ```
 
-**Important:** `--no-render` skips narration generation. The later `render --generate-audio` synthesizes narration **after** all images are approved. Use `--scene-audio` for speech-measured scene timing. Without either option, `render` reuses existing `narration.wav` if present, otherwise the video may be silent.
+**Important:** Script approval is mandatory for reviewed rendering; direct changes to the approved script invalidate it. `--no-render` skips narration generation. The later `render --generate-audio` synthesizes narration **after** all images are approved. Use `--scene-audio` for speech-measured scene timing. Without either option, `render` reuses existing `narration.wav` if present, otherwise the video may be silent.
 
 ## 7. Common problems
 
