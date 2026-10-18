@@ -1,6 +1,7 @@
 """Reviewable storyboard, separated from rendering and remote asset providers."""
 import json
 from pathlib import Path
+from PIL import Image
 from pydantic import BaseModel, Field
 from historyforgeai.domain.models import ShortPlan
 
@@ -60,3 +61,23 @@ def apply_approved(plan_path: Path, storyboard_path: Path) -> int:
         scene.attribution = shot.attribution
     plan_path.write_text(plan.model_dump_json(indent=2), encoding='utf-8')
     return len(plan.scenes)
+
+
+def approve_available_images(storyboard: Storyboard) -> tuple[list[int], list[int]]:
+    """Bulk-approve existing, readable images; leave invalid scenes unchanged."""
+    approved, skipped = [], []
+    for shot in storyboard.shots:
+        if not shot.candidate_image:
+            skipped.append(shot.scene_index)
+            continue
+        path = Path(shot.candidate_image).expanduser()
+        try:
+            with Image.open(path) as image:
+                image.verify()
+        except (OSError, ValueError, Image.DecompressionBombError):
+            skipped.append(shot.scene_index)
+            continue
+        shot.candidate_image = str(path.resolve())
+        shot.status = 'approved'
+        approved.append(shot.scene_index)
+    return approved, skipped
