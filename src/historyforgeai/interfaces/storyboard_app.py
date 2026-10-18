@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 import streamlit as st
-from historyforgeai.application.services.storyboard import load, save, apply_approved
+from historyforgeai.application.services.storyboard import load, save, apply_approved, approve_available_images
 from historyforgeai.application.services.script_review import save_script_edits, approve_script, script_approved
 from historyforgeai.domain.models import ShortPlan
 from historyforgeai.infrastructure.assets.commons_candidates import search_commons
@@ -51,6 +51,41 @@ st.subheader('Step 2 · Review scene images')
 board_path=job_dir/'storyboard.json'
 board=load(board_path)
 st.caption(f'{board.topic} · {len(board.shots)} scenes')
+
+# This callback runs before Streamlit redraws widgets, so status selectors
+# reflect bulk approval immediately without requiring a second click.
+def bulk_approve():
+    latest = load(board_path)
+    for shot in latest.shots:
+        idx = shot.scene_index
+        for field, prefix in (
+            ('candidate_image', 'path'),
+            ('source_url', 'url'),
+            ('license', 'lic'),
+            ('attribution', 'attr'),
+        ):
+            key = f'{prefix}{idx}'
+            if key in st.session_state:
+                setattr(shot, field, st.session_state[key] or None)
+        shot.status = st.session_state.get(f'status{idx}', shot.status)
+    approved, skipped = approve_available_images(latest)
+    save(board_path, latest)
+    for idx in approved:
+        st.session_state[f'status{idx}'] = 'approved'
+    st.session_state['bulk_approval_feedback'] = (approved, skipped)
+
+st.button(
+    'Approve All Images',
+    on_click=bulk_approve,
+    help='Approves all readable local images and skips missing or invalid files.',
+)
+feedback = st.session_state.pop('bulk_approval_feedback', None)
+if feedback is not None:
+    approved, skipped = feedback
+    st.success(f'Approved {len(approved)} image(s).')
+    if skipped:
+        st.warning('Skipped scenes with missing or unreadable images: ' + ', '.join(map(str, skipped)))
+
 for shot in board.shots:
     with st.expander(f'Scene {shot.scene_index}: {shot.narration[:90]}',expanded=True):
         st.write(shot.narration)
