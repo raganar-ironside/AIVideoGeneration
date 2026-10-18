@@ -4,6 +4,8 @@
 
 > **Project status:** Working prototype, not a fully automated documentary producer. AI-generated scripts and historical claims require fact-checking. Review visuals, source licences, narration, and final videos before publication.
 
+**New here? Start with [Your first HistoryForgeAI Short](docs/USER_JOURNEY.md)** — a practical install-to-video guide with Hindi narration and voice presets.
+
 ## Features
 
 | Area | Implemented | Important limitations |
@@ -14,11 +16,11 @@
 | Image sourcing | Wikimedia Commons, manual files, Hugging Face, OpenAI | Hosted calls may cost money; all candidate images require review |
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
-| Narration | Optional `espeak-ng`; scene-by-scene timing option | Robotic voice; natural Hindi/English TTS not yet integrated |
+| Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
 | Video | FFmpeg vertical MP4, static/zoom-in/zoom-out motion | No generative AI video |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
-**Not yet implemented:** natural neural narration, word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
+**Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
 
 ## Setup — Ubuntu on WSL2
 
@@ -33,7 +35,7 @@ git clone git@github-personal:raganar-ironside/AIVideoGeneration.git
 cd AIVideoGeneration
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev,review,images]'
+python -m pip install -e '.[dev,review,images,kokoro,edge]'
 cp .env.example .env
 python -m pytest -q
 historyforgeai --help
@@ -44,6 +46,8 @@ Without a personal SSH alias, use `git clone https://github.com/raganar-ironside
 ## Quick start
 
 ### Offline demo
+
+For a complete walkthrough including model downloads, voice presets, output files, and review steps, use the [user journey guide](docs/USER_JOURNEY.md).
 
 ```bash
 historyforgeai run --topic "Ashoka and the Kalinga War" --provider mock
@@ -106,7 +110,7 @@ You can specify `--model`. Hosted generation can incur charges; generated candid
 historyforgeai run --topic "The Chola navy" --provider mock --scene-audio --motion zoom_in
 ```
 
-This mode synthesizes speech separately for each scene, measures it with FFprobe, and adjusts scene durations. Available motion choices are `static`, `zoom_in`, and `zoom_out`. It currently uses eSpeak, not a natural documentary voice.
+This mode synthesizes speech separately for each scene, measures it with FFprobe, and adjusts scene durations. Available motion choices are `static`, `zoom_in`, and `zoom_out`. Narration uses the selected Kokoro, Edge, or eSpeak provider and optional voice preset.
 
 ### Character references
 
@@ -132,6 +136,8 @@ Create `.env` from `.env.example`. Common variables:
 | OpenAI scripts/images | `OPENAI_API_KEY` |
 | Hugging Face images | `HF_TOKEN`, optional `HF_IMAGE_MODEL` |
 | Wikimedia Commons | `WIKIMEDIA_USER_AGENT` |
+| Narration provider | `SPEECH_PROVIDER`, `SPEECH_FALLBACK_ORDER`, `KOKORO_*`, `EDGE_TTS_*` |
+| Voice presets | `VOICE_PRESET` and optional `VOICE_SPEED`, `VOICE_PITCH_SEMITONES`, `VOICE_BASS_DB`, `VOICE_SENTENCE_PAUSE` |
 
 Provider costs, rate limits, models, and availability can change. The project does not yet enforce the budget settings in `configs/development.json`.
 
@@ -155,7 +161,7 @@ src/historyforgeai/
     llm/                        Script providers
     research/                   Wikipedia discovery
     assets/                     Wikimedia Commons
-    speech/                     eSpeak
+    speech/                     Kokoro, Edge, eSpeak, presets
     rendering/                  FFmpeg and motion
     persistence/                Job/character storage
   interfaces/storyboard_app.py  Streamlit reviewer
@@ -163,7 +169,7 @@ tests/                          Automated tests
 workspace/                      Generated files (Git-ignored)
 ```
 
-See [visual workflow documentation](docs/VISUAL_WORKFLOW.md) for more details.
+See the [user journey](docs/USER_JOURNEY.md), [narration guide](docs/SPEECH_PROVIDERS.md), and [visual workflow](docs/VISUAL_WORKFLOW.md) for details.
 
 ## Development checks
 
@@ -178,7 +184,7 @@ Tests are available but do not verify live paid API access or the historical acc
 
 ## Roadmap
 
-1. Natural, deep Indian documentary narration with Hindi/English support.
+1. Improve Hindi narration quality, pronunciation, and voice preset previews.
 2. Better scene prompts and consistent characters across generated images.
 3. Research citations, editorial fact-checking, and licence/attribution export.
 4. Subtitles, improved video effects, and audio quality.
