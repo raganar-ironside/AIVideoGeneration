@@ -81,3 +81,78 @@ if st.button('Apply approved images to scene plan'):
         count=apply_approved(job_dir/'scene_plan.json',board_path)
         st.success(f'Applied {count} approved images')
     except Exception as exc: st.error(str(exc))
+
+st.divider()
+st.subheader('Step 3 · Narration Studio')
+st.caption('Preview audio before spending requests on a full render. Settings apply to this action only.')
+import os
+import subprocess
+from historyforgeai.infrastructure.speech.factory import build_speech
+
+provider = st.selectbox('Narration engine', ['edge', 'gemini', 'kokoro'], index=0)
+voice_defaults = {'edge': 'hi-IN-MadhurNeural', 'gemini': 'Charon', 'kokoro': ''}
+voice = st.text_input('Voice name', value=voice_defaults[provider], key=f'voice_{provider}')
+speed = st.slider('Speaking speed', min_value=0.85, max_value=1.50, value=1.20, step=0.05)
+preset = st.selectbox('Voice style', ['normal', 'documentary', 'epic'], index=0)
+preview_text = st.text_area(
+    'Preview text',
+    value='दक्षिण भारत के तंजावुर में स्थित बृहदीश्वर मंदिर, चोल साम्राज्य की प्रसिद्ध स्थापत्य कला का अद्भुत उदाहरण है।',
+    height=100,
+)
+st.caption('Gemini preview consumes one API request. Rendering with scene audio may consume one request per scene.')
+def narration_env():
+    env = os.environ.copy()
+    env['SPEECH_PROVIDER'] = provider
+    env['VOICE_PRESET'] = preset
+    env['VOICE_SPEED'] = str(speed)
+    if provider == 'edge':
+        env['EDGE_TTS_VOICE'] = voice
+    elif provider == 'gemini':
+        env['GEMINI_TTS_VOICE'] = voice
+    return env
+
+if st.button('Generate narration preview'):
+    if not preview_text.strip():
+        st.warning('Enter preview text first.')
+    else:
+        try:
+            # build_speech reads process environment; restore it after synthesis.
+            keys = ['SPEECH_PROVIDER', 'VOICE_PRESET', 'VOICE_SPEED', 'EDGE_TTS_VOICE', 'GEMINI_TTS_VOICE']
+            previous = {key: os.environ.get(key) for key in keys}
+            try:
+                os.environ.update({key: value for key, value in narration_env().items() if key in keys})
+                preview_path = job_dir / 'narration_preview.wav'
+                build_speech().synthesize(preview_text.strip(), str(preview_path))
+            finally:
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+            st.audio(str(preview_path))
+            st.success('Preview generated. Listen before rendering.')
+        except Exception as exc:
+            st.error(f'Preview failed: {exc}')
+preview_path = job_dir / 'narration_preview.wav'
+if preview_path.is_file():
+    st.audio(str(preview_path))
+
+st.caption('Full render overwrites short.mp4 and narration.wav. Back up existing files first.')
+confirm_render = st.checkbox('I have reviewed my script and images and want to generate the video')
+if st.button('Render with selected narration', disabled=not confirm_render):
+    try:
+        cmd = [
+            sys.executable, '-m', 'historyforgeai.cli', 'render',
+            '--job', job_dir.name, '--generate-audio', '--scene-audio',
+            '--motion', 'zoom_in',
+        ]
+        result = subprocess.run(cmd, env=narration_env(), capture_output=True, text=True, timeout=1200)
+        if result.returncode:
+            st.error(result.stderr[-3000:] or result.stdout[-3000:])
+        else:
+            st.success('Video rendered')
+            video = job_dir / 'short.mp4'
+            if video.is_file():
+                st.video(str(video))
+    except Exception as exc:
+        st.error(f'Render failed: {exc}')
