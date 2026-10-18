@@ -91,7 +91,35 @@ from historyforgeai.infrastructure.speech.factory import build_speech
 
 provider = st.selectbox('Narration engine', ['edge', 'gemini', 'kokoro'], index=0)
 voice_defaults = {'edge': 'hi-IN-MadhurNeural', 'gemini': 'Charon', 'kokoro': ''}
-voice = st.text_input('Voice name', value=voice_defaults[provider], key=f'voice_{provider}')
+if provider == 'edge':
+    edge_voice_options = {
+        'Madhur — Hindi male': 'hi-IN-MadhurNeural',
+        'Swara — Hindi female': 'hi-IN-SwaraNeural',
+        'Custom voice name': 'custom',
+    }
+    voice_choice = st.selectbox('Edge voice', list(edge_voice_options))
+    voice = (st.text_input('Custom Edge voice', value='hi-IN-MadhurNeural')
+             if edge_voice_options[voice_choice] == 'custom'
+             else edge_voice_options[voice_choice])
+else:
+    voice = st.text_input('Voice name', value=voice_defaults[provider], key=f'voice_{provider}')
+if provider == 'edge':
+    st.caption('Edge native speech settings')
+    if 'edge_pitch' not in st.session_state:
+        st.session_state.edge_pitch = -10
+    if 'edge_volume' not in st.session_state:
+        st.session_state.edge_volume = 0
+    if 'edge_bass' not in st.session_state:
+        st.session_state.edge_bass = 2
+    if st.button('Reset Edge voice controls'):
+        st.session_state.edge_pitch = 0
+        st.session_state.edge_volume = 0
+        st.session_state.edge_bass = 0
+        st.rerun()
+    edge_pitch = st.slider('Edge pitch (Hz)', min_value=-50, max_value=50, step=5, key='edge_pitch')
+    edge_volume = st.slider('Edge volume (%)', min_value=-50, max_value=50, step=5, key='edge_volume')
+    edge_bass = st.slider('Bass enhancement (dB)', min_value=0, max_value=8, step=1, key='edge_bass')
+
 speed = st.slider('Speaking speed', min_value=0.85, max_value=1.50, value=1.20, step=0.05)
 preset = st.selectbox('Voice style', ['normal', 'documentary', 'epic'], index=0)
 preview_text = st.text_area(
@@ -107,6 +135,10 @@ def narration_env():
     env['VOICE_SPEED'] = str(speed)
     if provider == 'edge':
         env['EDGE_TTS_VOICE'] = voice
+        env['EDGE_TTS_PITCH'] = f'{edge_pitch:+d}Hz'
+        env['EDGE_TTS_VOLUME'] = f'{edge_volume:+d}%'
+        env['VOICE_BASS_DB'] = str(edge_bass)
+        env['VOICE_PITCH_SEMITONES'] = '0'
     elif provider == 'gemini':
         env['GEMINI_TTS_VOICE'] = voice
     return env
@@ -117,7 +149,7 @@ if st.button('Generate narration preview'):
     else:
         try:
             # build_speech reads process environment; restore it after synthesis.
-            keys = ['SPEECH_PROVIDER', 'VOICE_PRESET', 'VOICE_SPEED', 'EDGE_TTS_VOICE', 'GEMINI_TTS_VOICE']
+            keys = ['SPEECH_PROVIDER', 'VOICE_PRESET', 'VOICE_SPEED', 'EDGE_TTS_VOICE', 'GEMINI_TTS_VOICE', 'EDGE_TTS_PITCH', 'EDGE_TTS_VOLUME', 'VOICE_BASS_DB', 'VOICE_PITCH_SEMITONES']
             previous = {key: os.environ.get(key) for key in keys}
             try:
                 os.environ.update({key: value for key, value in narration_env().items() if key in keys})
