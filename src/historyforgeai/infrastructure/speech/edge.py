@@ -7,9 +7,11 @@ from pathlib import Path
 
 
 class EdgeSpeech:
-    def __init__(self, voice=None, rate=None):
+    def __init__(self, voice=None, rate=None, pitch=None, volume=None):
         self.voice = voice or os.getenv("EDGE_TTS_VOICE", "hi-IN-MadhurNeural")
         self.rate = rate or os.getenv("EDGE_TTS_RATE", "-8%")
+        self.pitch = pitch if pitch is not None else os.getenv("EDGE_TTS_PITCH", "+0Hz")
+        self.volume = volume if volume is not None else os.getenv("EDGE_TTS_VOLUME", "+0%")
 
     def synthesize(self, text: str, destination: str) -> bool:
         try:
@@ -22,7 +24,7 @@ class EdgeSpeech:
             mp3 = Path(temp) / "edge.mp3"
 
             async def run():
-                await edge_tts.Communicate(text, self.voice, rate=self.rate).save(str(mp3))
+                await edge_tts.Communicate(text, self.voice, rate=self.rate, pitch=self.pitch, volume=self.volume).save(str(mp3))
 
             asyncio.run(run())
             subprocess.run(
