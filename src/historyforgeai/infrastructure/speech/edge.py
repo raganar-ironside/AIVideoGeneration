@@ -1,18 +1,33 @@
+"""Online Edge TTS adapter; transcodes its MP3 output to WAV."""
 import asyncio
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
+
 class EdgeSpeech:
-    """Optional online adapter using the unofficial edge-tts service."""
-    def __init__(self, voice='hi-IN-MadhurNeural', rate='-8%'):
-        self.voice, self.rate = voice, rate
+    def __init__(self, voice=None, rate=None):
+        self.voice = voice or os.getenv("EDGE_TTS_VOICE", "hi-IN-MadhurNeural")
+        self.rate = rate or os.getenv("EDGE_TTS_RATE", "-8%")
 
     def synthesize(self, text: str, destination: str) -> bool:
         try:
             import edge_tts
         except ImportError as exc:
-            raise RuntimeError('Install optional speech dependency: pip install edge-tts') from exc
-        Path(destination).parent.mkdir(parents=True, exist_ok=True)
-        async def run():
-            await edge_tts.Communicate(text, self.voice, rate=self.rate).save(destination)
-        asyncio.run(run())
-        return Path(destination).stat().st_size > 0
+            raise RuntimeError("Install Edge TTS dependency: pip install '.[edge]'") from exc
+        output = Path(destination)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as temp:
+            mp3 = Path(temp) / "edge.mp3"
+
+            async def run():
+                await edge_tts.Communicate(text, self.voice, rate=self.rate).save(str(mp3))
+
+            asyncio.run(run())
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(mp3),
+                 "-ar", "24000", "-ac", "1", str(output)],
+                check=True, capture_output=True, timeout=120,
+            )
+        return output.is_file() and output.stat().st_size > 44

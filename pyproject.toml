@@ -11,6 +11,8 @@ dependencies = ["pydantic>=2.7,<3", "requests>=2.31,<3", "Pillow>=10,<13", "pyth
 dev = ["pytest>=8,<10", "ruff>=0.6"]
 review = ["streamlit>=1.36,<2"]
 images = ["huggingface_hub>=0.30,<2"]
+kokoro = ["kokoro-onnx>=0.4", "soundfile>=0.12"]
+edge = ["edge-tts>=6.1"]
 [project.scripts]
 historyforgeai = "historyforgeai.cli:main"
 [tool.setuptools.packages.find]
