@@ -48,6 +48,11 @@ class MasteredSpeech:
         self.speech = speech
         self.preset = preset
 
+    @property
+    def providers(self):
+        """Expose the underlying fallback providers for compatibility."""
+        return self.speech.providers
+
     def synthesize(self, text: str, destination: str) -> bool:
         output = Path(destination)
         output.parent.mkdir(parents=True, exist_ok=True)
