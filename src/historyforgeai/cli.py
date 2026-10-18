@@ -44,6 +44,9 @@ def main():
     render_cmd = sub.add_parser("render", help="Render an existing approved storyboard")
     render_cmd.add_argument("--job", required=True, help="Existing job ID")
     render_cmd.add_argument("--generate-audio", action="store_true", help="Synthesize narration after approval")
+    render_cmd.add_argument("--subtitles", choices=["on", "off"], default="off", help="Burn scene narration onto frames (default: off)")
+    render_cmd.add_argument("--title-overlay", choices=["on", "off"], default="off", help="Show video title on frames (default: off)")
+    render_cmd.add_argument("--watermark", choices=["on", "off"], default="off", help="Show draft watermark (default: off)")
     render_cmd.add_argument("--scene-audio", action="store_true", help="Measure and align per-scene narration (implies --generate-audio)")
     render_cmd.add_argument("--motion", choices=["static", "zoom_in", "zoom_out"], default="zoom_in")
     images = sub.add_parser("image", help="Add a manual or hosted candidate image for storyboard review")
@@ -123,7 +126,10 @@ def main():
         from historyforgeai.infrastructure.rendering.ffmpeg import FFmpegRenderer
         work = ROOT / "workspace"
         repo = FileJobRepository(work / "jobs")
-        renderer = FFmpegRenderer(config["width"], config["height"], config["fps"])
+        renderer = FFmpegRenderer(config["width"], config["height"], config["fps"],
+                                  subtitles=args.subtitles == "on",
+                                  title_overlay=args.title_overlay == "on",
+                                  watermark=args.watermark == "on")
         try:
             from historyforgeai.infrastructure.speech.factory import build_speech
             speech = build_speech() if (args.generate_audio or args.scene_audio) else None
