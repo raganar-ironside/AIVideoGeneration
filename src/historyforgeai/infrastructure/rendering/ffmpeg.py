@@ -8,8 +8,11 @@ from historyforgeai.domain.models import ShortPlan
 from historyforgeai.infrastructure.rendering.motion import zoompan_filter
 
 class FFmpegRenderer:
-    def __init__(self, width=720, height=1280, fps=24):
+    def __init__(self, width=720, height=1280, fps=24, subtitles=False, title_overlay=False, watermark=False):
         self.width, self.height, self.fps = width, height, fps
+        self.subtitles = subtitles
+        self.title_overlay = title_overlay
+        self.watermark = watermark
 
     def _frame(self, scene, target: Path, title: str):
         w, h = self.width, self.height
@@ -21,18 +24,26 @@ class FFmpegRenderer:
                 image = Image.new("RGB", (w,h), (22,28,40))
         else:
             image = Image.new("RGB", (w,h), (22,28,40))
-        draw = ImageDraw.Draw(image, "RGBA")
-        draw.rectangle((0,0,w,190), fill=(0,0,0,175))
-        draw.rectangle((0,h-290,w,h), fill=(0,0,0,185))
-        fontpath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        font = ImageFont.truetype(fontpath, 32) if Path(fontpath).exists() else ImageFont.load_default()
-        small = ImageFont.truetype(fontpath, 25) if Path(fontpath).exists() else ImageFont.load_default()
-        def wrap(text, max_chars=32):
-            import textwrap
-            return "\n".join(textwrap.wrap(text, max_chars, break_long_words=False))
-        draw.multiline_text((36,42), wrap(title, 30), font=font, fill="white", spacing=7)
-        draw.multiline_text((36,h-240), wrap(scene.narration, 37), font=small, fill="white", spacing=8)
-        draw.text((36,h-55), "HISTORYFORGEAI  •  DRAFT", font=small, fill=(230,190,105))
+        if self.title_overlay or self.subtitles or self.watermark:
+            draw = ImageDraw.Draw(image, "RGBA")
+            fontpath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            devanagari = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
+            def wrap(text, max_chars=32):
+                import textwrap
+                return "\n".join(textwrap.wrap(text, max_chars, break_long_words=False))
+            if self.title_overlay:
+                draw.rectangle((0, 0, w, 190), fill=(0, 0, 0, 175))
+                font = ImageFont.truetype(fontpath, 32) if Path(fontpath).exists() else ImageFont.load_default()
+                draw.multiline_text((36, 42), wrap(title, 30), font=font, fill="white", spacing=7)
+            if self.subtitles:
+                draw.rectangle((0, h - 290, w, h - 70), fill=(0, 0, 0, 185))
+                font_file = devanagari if Path(devanagari).exists() else fontpath
+                font = ImageFont.truetype(font_file, 25) if Path(font_file).exists() else ImageFont.load_default()
+                draw.multiline_text((36, h - 240), wrap(scene.narration, 37), font=font, fill="white", spacing=8)
+            if self.watermark:
+                draw.rectangle((0, h - 70, w, h), fill=(0, 0, 0, 185))
+                font = ImageFont.truetype(fontpath, 25) if Path(fontpath).exists() else ImageFont.load_default()
+                draw.text((36, h - 55), "HISTORYFORGEAI  •  DRAFT", font=font, fill=(230, 190, 105))
         target.parent.mkdir(parents=True, exist_ok=True)
         image.save(target, quality=90)
 
