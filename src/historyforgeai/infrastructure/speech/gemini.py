@@ -1,5 +1,7 @@
 """Gemini native audio generation, saved as mono 24-kHz PCM WAV."""
 import os
+import subprocess
+import tempfile
 import wave
 from pathlib import Path
 
@@ -45,11 +47,25 @@ class GeminiSpeech:
                 raise RuntimeError(f"Unexpected Gemini audio format: {audio.mime_type}")
             output = Path(destination)
             output.parent.mkdir(parents=True, exist_ok=True)
-            with wave.open(str(output), "wb") as wav:
+            speed = float(os.getenv("VOICE_SPEED", "1.0"))
+            if not 0.5 <= speed <= 2.0:
+                raise ValueError("VOICE_SPEED must be between 0.5 and 2.0")
+            raw_path = output if abs(speed - 1.0) < 0.001 else Path(tempfile.mkstemp(suffix=".wav")[1])
+            with wave.open(str(raw_path), "wb") as wav:
                 wav.setnchannels(1)
                 wav.setsampwidth(2)
                 wav.setframerate(24000)
                 wav.writeframes(audio.data)
+            if raw_path != output:
+                try:
+                    subprocess.run(
+                        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                         "-i", str(raw_path), "-filter:a", f"atempo={speed:.3f}",
+                         "-ar", "24000", "-ac", "1", str(output)],
+                        check=True, capture_output=True, timeout=120,
+                    )
+                finally:
+                    raw_path.unlink(missing_ok=True)
             return output.stat().st_size > 44
         finally:
             client.close()
