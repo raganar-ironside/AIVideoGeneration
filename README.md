@@ -87,10 +87,10 @@ streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/
 In the Streamlit reviewer, inspect images, licences, and attribution and mark **every** scene `approved`. Then render:
 
 ```bash
-historyforgeai render --job JOB_ID --motion zoom_in
+historyforgeai render --job JOB_ID --generate-audio --scene-audio --motion zoom_in
 ```
 
-The render command rejects incomplete or unapproved storyboards. It reuses `narration.wav` if present; **it does not synthesize narration** for imported jobs. Without that audio file, output may be silent. Adding a new image candidate resets the scene to `pending_review`.
+The render command rejects incomplete or unapproved storyboards. Add `--generate-audio` to synthesize narration **after approval**, or `--scene-audio` to synthesize and align each scene. Without either flag, it reuses `narration.wav` if present; otherwise output may be silent. Adding a new image candidate resets the scene to `pending_review`.
 
 ### Generate hosted image candidates
 

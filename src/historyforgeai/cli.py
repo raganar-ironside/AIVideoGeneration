@@ -43,6 +43,8 @@ def main():
     story.add_argument('--apply', action='store_true', help='Apply only if every scene is approved')
     render_cmd = sub.add_parser("render", help="Render an existing approved storyboard")
     render_cmd.add_argument("--job", required=True, help="Existing job ID")
+    render_cmd.add_argument("--generate-audio", action="store_true", help="Synthesize narration after approval")
+    render_cmd.add_argument("--scene-audio", action="store_true", help="Measure and align per-scene narration (implies --generate-audio)")
     render_cmd.add_argument("--motion", choices=["static", "zoom_in", "zoom_out"], default="zoom_in")
     images = sub.add_parser("image", help="Add a manual or hosted candidate image for storyboard review")
     images.add_argument("--job", required=True)
@@ -123,7 +125,10 @@ def main():
         repo = FileJobRepository(work / "jobs")
         renderer = FFmpegRenderer(config["width"], config["height"], config["fps"])
         try:
-            print(render_approved_job(args.job, work, repo, renderer, motion=args.motion))
+            from historyforgeai.infrastructure.speech.factory import build_speech
+            speech = build_speech() if (args.generate_audio or args.scene_audio) else None
+            print(render_approved_job(args.job, work, repo, renderer, motion=args.motion,
+                                      speech=speech, scene_audio=args.scene_audio))
         except Exception as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(1)

@@ -114,10 +114,10 @@ streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/
 Replace `JOB_ID` with the printed ID. Add/review images for all scenes, approve every scene in Streamlit, then run:
 
 ```bash
-historyforgeai render --job JOB_ID --motion zoom_in
+historyforgeai render --job JOB_ID --generate-audio --scene-audio --motion zoom_in
 ```
 
-**Important:** `--no-render` also skips narration generation. The later `render` command does **not** synthesize speech; it only uses an existing `workspace/jobs/JOB_ID/narration.wav`. Without that file, the resulting video may be silent. The reviewed workflow is therefore best for visual approval or when you supply matching audio yourself.
+**Important:** `--no-render` skips narration generation. The later `render --generate-audio` synthesizes narration **after** all images are approved. Use `--scene-audio` for speech-measured scene timing. Without either option, `render` reuses existing `narration.wav` if present, otherwise the video may be silent.
 
 ## 7. Common problems
 
