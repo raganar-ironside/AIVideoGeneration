@@ -63,3 +63,36 @@ def test_missing_storyboard_fails_closed(tmp_path):
     with pytest.raises(FileNotFoundError):
         render_approved_job(job.id, tmp_path, pipeline.repo, renderer)
     assert not renderer.calls
+
+
+class FakeSpeech:
+    def __init__(self):
+        self.calls = []
+
+    def synthesize(self, text, destination):
+        self.calls.append(text)
+        Path(destination).write_bytes(b"RIFF" + b"x" * 100)
+        return True
+
+
+def test_review_blocks_audio_until_approval(tmp_path):
+    pipeline, job, folder, board = setup_job(tmp_path)
+    speech = FakeSpeech()
+    renderer = FakeRenderer()
+    with pytest.raises(ValueError, match="approved"):
+        render_approved_job(job.id, tmp_path, pipeline.repo, renderer, speech=speech)
+    assert speech.calls == []
+    assert renderer.calls == []
+
+
+def test_approved_job_generates_audio_before_render(tmp_path):
+    pipeline, job, folder, board = setup_job(tmp_path)
+    for shot in board.shots:
+        shot.status = "approved"
+    save(folder / "storyboard.json", board)
+    speech = FakeSpeech()
+    renderer = FakeRenderer()
+    render_approved_job(job.id, tmp_path, pipeline.repo, renderer, speech=speech)
+    assert len(speech.calls) == 1
+    assert (folder / "narration.wav").is_file()
+    assert renderer.calls[0][2] == str(folder / "narration.wav")
