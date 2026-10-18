@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from historyforgeai.application.services.storyboard import apply_approved
+from historyforgeai.application.services.script_review import script_approved
 from historyforgeai.application.services.timeline import build_timeline
 from historyforgeai.domain.models import JobStatus, ShortPlan
 
@@ -24,6 +25,8 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
     if not plan_path.is_file() or not board_path.is_file():
         raise FileNotFoundError("Both scene_plan.json and storyboard.json are required")
     job = repository.load(job_id)
+    if not script_approved(folder):
+        raise ValueError('Script is not approved or changed since approval; approve it in Streamlit first')
     apply_approved(plan_path, board_path)
     plan = ShortPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
     narration = folder / "narration.wav"
