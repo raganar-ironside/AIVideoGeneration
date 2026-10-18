@@ -84,13 +84,13 @@ historyforgeai image --job JOB_ID --scene 1 --provider manual --file ~/Pictures/
 streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/JOB_ID
 ```
 
-In the Streamlit reviewer, inspect images, licences, and attribution and mark **every** scene `approved`. Then render:
+In Streamlit, **edit and save scene narration**, then click **Approve current script**. The edited narration replaces the AI draft in `scene_plan.json`, and the original is backed up as `original_scene_plan.json`. Next inspect images, licences, and attribution and mark **every** scene `approved`. Changing a scene resets that scene's image approval and invalidates script approval; editing the JSON outside Streamlit also invalidates approval. Then render:
 
 ```bash
 historyforgeai render --job JOB_ID --generate-audio --scene-audio --motion zoom_in
 ```
 
-The render command rejects incomplete or unapproved storyboards. Add `--generate-audio` to synthesize narration **after approval**, or `--scene-audio` to synthesize and align each scene. Without either flag, it reuses `narration.wav` if present; otherwise output may be silent. Adding a new image candidate resets the scene to `pending_review`.
+The render command requires an approved, unchanged script **and** approved images.  Add `--generate-audio` to synthesize narration **after approval**, or `--scene-audio` to synthesize and align each scene. Without either flag, it reuses `narration.wav` if present; otherwise output may be silent. Adding a new image candidate resets the scene to `pending_review`.
 
 ### Generate hosted image candidates
 
