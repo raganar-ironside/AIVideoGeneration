@@ -4,6 +4,12 @@ import pytest
 from historyforgeai.infrastructure.speech.presets import PRESETS, selected_preset
 
 
+@pytest.fixture(autouse=True)
+def clear_voice_overrides(monkeypatch):
+    for name in ("VOICE_SPEED", "VOICE_PITCH_SEMITONES", "VOICE_BASS_DB", "VOICE_SENTENCE_PAUSE"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_default_preset(monkeypatch):
     monkeypatch.delenv("VOICE_PRESET", raising=False)
     assert selected_preset() == PRESETS["normal"]
