@@ -1,8 +1,8 @@
 import json
 import re
-import uuid
 from pathlib import Path
 from historyforgeai.domain.models import Job, JobStatus
+from historyforgeai.application.services.job_ids import new_job_id
 from historyforgeai.application.services.timeline import build_timeline
 from historyforgeai.application.services.visuals import VisualResolver
 from historyforgeai.infrastructure.persistence.characters import CharacterRegistry
@@ -16,7 +16,7 @@ class ShortsPipeline:
 
     def run(self, topic: str, duration=48, scenes=6, fetch_assets=False, synthesize_audio=True,
             render=True, research_enabled=False, scene_audio=False, motion="zoom_in"):
-        job = Job(id=uuid.uuid4().hex[:12], topic=topic)
+        job = Job(id=new_job_id(topic, self.workspace / 'jobs'), topic=topic)
         self.repo.save(job)
         folder = self.workspace / "jobs" / job.id
         try:
