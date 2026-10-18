@@ -1,10 +1,10 @@
 """Import a user-authored script into the existing job/storyboard workflow."""
 import json
-import uuid
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from historyforgeai.domain.models import Job, JobStatus, Scene, ShortPlan
+from historyforgeai.application.services.job_ids import new_job_id
 
 
 class ManualScript(BaseModel):
@@ -33,7 +33,7 @@ def import_script(source: Path, workspace: Path, repository) -> Job:
     manual = ManualScript.model_validate(data)
     plan = ShortPlan(topic=manual.topic, title=manual.title,
                      narration=manual.narration, scenes=manual.scenes)
-    job = Job(id=uuid.uuid4().hex[:12], topic=plan.topic, status=JobStatus.PLANNED)
+    job = Job(id=new_job_id(plan.topic, Path(workspace) / 'jobs'), topic=plan.topic, status=JobStatus.PLANNED)
     folder = Path(workspace) / "jobs" / job.id
     folder.mkdir(parents=True, exist_ok=False)
     plan_path = folder / "scene_plan.json"
