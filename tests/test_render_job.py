@@ -3,6 +3,7 @@ import pytest
 from PIL import Image
 
 from historyforgeai.bootstrap import build
+from historyforgeai.application.services.script_review import approve_script
 from historyforgeai.application.services.storyboard import make_storyboard, save
 from historyforgeai.application.services.render_job import render_approved_job
 from historyforgeai.infrastructure.persistence.characters import CharacterRegistry
@@ -29,6 +30,7 @@ def setup_job(tmp_path):
     for shot in board.shots:
         shot.candidate_image = str(image)
     save(folder / "storyboard.json", board)
+    approve_script(folder)
     return pipeline, job, folder, board
 
 
@@ -96,3 +98,16 @@ def test_approved_job_generates_audio_before_render(tmp_path):
     assert len(speech.calls) == 1
     assert (folder / "narration.wav").is_file()
     assert renderer.calls[0][2] == str(folder / "narration.wav")
+
+
+def test_missing_script_approval_blocks_render_and_speech(tmp_path):
+    pipeline, job, folder, board = setup_job(tmp_path)
+    for shot in board.shots:
+        shot.status = "approved"
+    save(folder / "storyboard.json", board)
+    (folder / "script_approval.json").unlink()
+    speech = FakeSpeech()
+    renderer = FakeRenderer()
+    with pytest.raises(ValueError, match="Script is not approved"):
+        render_approved_job(job.id, tmp_path, pipeline.repo, renderer, speech=speech)
+    assert not speech.calls and not renderer.calls
