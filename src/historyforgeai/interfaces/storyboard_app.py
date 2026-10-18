@@ -105,11 +105,20 @@ else:
     voice = st.text_input('Voice name', value=voice_defaults[provider], key=f'voice_{provider}')
 if provider == 'edge':
     st.caption('Edge native speech settings')
-    edge_pitch = st.slider('Edge pitch (Hz)', min_value=-50, max_value=50, value=-10, step=5)
-    edge_volume = st.slider('Edge volume (%)', min_value=-50, max_value=50, value=0, step=5)
-    edge_bass = st.slider('Bass enhancement (dB)', min_value=0, max_value=8, value=2, step=1)
+    if 'edge_pitch' not in st.session_state:
+        st.session_state.edge_pitch = -10
+    if 'edge_volume' not in st.session_state:
+        st.session_state.edge_volume = 0
+    if 'edge_bass' not in st.session_state:
+        st.session_state.edge_bass = 2
     if st.button('Reset Edge voice controls'):
-        st.info('Set pitch to 0 Hz, volume to 0%, bass to 0 dB and speed to 1.00× for neutral audio.')
+        st.session_state.edge_pitch = 0
+        st.session_state.edge_volume = 0
+        st.session_state.edge_bass = 0
+        st.rerun()
+    edge_pitch = st.slider('Edge pitch (Hz)', min_value=-50, max_value=50, step=5, key='edge_pitch')
+    edge_volume = st.slider('Edge volume (%)', min_value=-50, max_value=50, step=5, key='edge_volume')
+    edge_bass = st.slider('Bass enhancement (dB)', min_value=0, max_value=8, step=1, key='edge_bass')
 
 speed = st.slider('Speaking speed', min_value=0.85, max_value=1.50, value=1.20, step=0.05)
 preset = st.selectbox('Voice style', ['normal', 'documentary', 'epic'], index=0)
