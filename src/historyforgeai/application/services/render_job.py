@@ -52,7 +52,7 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
             for scene, duration in zip(plan.scenes, durations):
                 scene.duration_seconds = duration
             concat = folder / "audio_concat.txt"
-            concat.write_text("".join(f"file '{p.resolve()}'\\n" for p in padded), encoding="utf-8")
+            concat.write_text("".join(f"file '{p.resolve()}'\n" for p in padded), encoding="utf-8")
             subprocess.run(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat",
                  "-safe", "0", "-i", str(concat), "-ar", "24000", "-ac", "1", str(narration)],
