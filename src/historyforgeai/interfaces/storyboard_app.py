@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 import streamlit as st
 from historyforgeai.application.services.storyboard import load, save, apply_approved
+from historyforgeai.application.services.script_review import save_script_edits, approve_script, script_approved
+from historyforgeai.domain.models import ShortPlan
 from historyforgeai.infrastructure.assets.commons_candidates import search_commons
 
 st.set_page_config(page_title='HistoryForgeAI Storyboard',layout='wide')
@@ -11,6 +13,41 @@ job_dir = Path(sys.argv[-1]).expanduser().resolve() if len(sys.argv)>1 and sys.a
 if not job_dir or not (job_dir/'storyboard.json').exists():
     st.info('Launch: streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/JOB_ID')
     st.stop()
+plan_path = job_dir / 'scene_plan.json'
+if not plan_path.is_file():
+    st.error('Missing scene_plan.json')
+    st.stop()
+plan = ShortPlan.model_validate_json(plan_path.read_text(encoding='utf-8'))
+st.subheader('Step 1 · Review the script')
+st.caption('Edit individual scenes. Save first, then approve. Changed scenes return to pending image review.')
+with st.form('script_editor'):
+    edits = {}
+    for scene in plan.scenes:
+        with st.expander(f'Script scene {scene.index}', expanded=True):
+            narration = st.text_area('Narration', scene.narration, key=f'narration_{scene.index}', height=110)
+            visual = st.text_area('Visual description', scene.visual_description, key=f'visual_{scene.index}')
+            query = st.text_input('Image search query', scene.asset_query, key=f'query_{scene.index}')
+            edits[scene.index] = {'narration': narration, 'visual_description': visual, 'asset_query': query}
+    save_script = st.form_submit_button('Save script changes')
+if save_script:
+    try:
+        changed = save_script_edits(job_dir, edits)
+        st.success(f"Saved changes to scenes {changed}. Original AI draft preserved." if changed else 'No changes to save.')
+        st.rerun()
+    except Exception as exc:
+        st.error(str(exc))
+if script_approved(job_dir):
+    st.success('Script approved · no changes since approval')
+else:
+    st.warning('Script needs approval before narration or rendering')
+    if st.button('Approve current script', type='primary'):
+        try:
+            approve_script(job_dir)
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+st.divider()
+st.subheader('Step 2 · Review scene images')
 board_path=job_dir/'storyboard.json'
 board=load(board_path)
 st.caption(f'{board.topic} · {len(board.shots)} scenes')
