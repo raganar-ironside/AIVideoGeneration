@@ -28,7 +28,7 @@ def test_all_failures_are_reported(tmp_path):
 
 
 def test_default_preserves_espeak(monkeypatch):
-    monkeypatch.delenv("SPEECH_PROVIDER", raising=False)
+    monkeypatch.setenv("SPEECH_PROVIDER", "espeak")
     assert build_speech().providers[0][0] == "espeak"
 
 
