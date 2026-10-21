@@ -372,6 +372,7 @@ else:
                 job_dir, music_upload.name, music_upload.getvalue()
             )
             st.success(f'Saved background music: {imported.name}')
+            st.session_state['cinematic_use_music'] = True
             st.rerun()
         except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             st.error(f'Music import failed: {exc}')
@@ -379,9 +380,9 @@ else:
     if saved_music:
         st.caption(f'Saved track: {saved_music.name}')
         st.audio(str(saved_music))
+    st.session_state.setdefault('cinematic_use_music', bool(saved_music))
     use_music = st.checkbox(
         'Include saved background music',
-        value=bool(saved_music),
         disabled=saved_music is None,
         key='cinematic_use_music',
     )
