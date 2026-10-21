@@ -1,3 +1,5 @@
+import math
+
 from historyforgeai.domain.models import ShortPlan
 
 def build_timeline(plan: ShortPlan, measured_durations: list[float] | None = None) -> list[dict]:
@@ -14,3 +16,10 @@ def build_timeline(plan: ShortPlan, measured_durations: list[float] | None = Non
                        'image_path': scene.image_path, 'character_ids': scene.character_ids})
         elapsed += duration
     return result
+
+
+def frame_aligned_duration(audio_seconds: float, fps: int, tail_seconds: float = 0.25) -> float:
+    """Round audio plus a short pause UP to a whole number of video frames."""
+    if not math.isfinite(audio_seconds) or audio_seconds <= 0 or fps <= 0 or tail_seconds < 0:
+        raise ValueError('Audio duration and FPS must be positive and finite')
+    return math.ceil((audio_seconds + tail_seconds) * fps - 1e-9) / fps
