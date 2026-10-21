@@ -17,7 +17,7 @@
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
-| Video | FFmpeg vertical MP4, static/zoom-in/zoom-out motion | No generative AI video |
+| Video | FFmpeg vertical MP4, static/zoom-in/zoom-out motion, optional music and crossfades | No generative AI video |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
 **Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
@@ -111,6 +111,31 @@ historyforgeai run --topic "The Chola navy" --provider mock --scene-audio --moti
 ```
 
 This mode synthesizes speech separately for each scene, measures it with FFprobe, and adjusts scene durations. Available motion choices are `static`, `zoom_in`, and `zoom_out`. Narration uses the selected Kokoro, Edge, or eSpeak provider and optional voice preset.
+
+### Cinematic finishing: background music and transitions
+
+After rendering an approved scene-aligned Short, open the Streamlit reviewer and
+scroll to **Step 4 · Cinematic Finishing**:
+
+1. Download a track you are licensed to use (e.g., YouTube Audio Library).
+   Check attribution and commercial-use requirements yourself.
+2. Upload an MP3, WAV or M4A (maximum 40 MB), then click **Save music to this job**.
+   The file is stored in the job's `assets/` directory and can be reused.
+3. Choose a music level (start at **15%**), enable **Automatically lower music while narration plays**,
+   and select **Cinematic crossfade** (start with **0.4 seconds**) or **Hard cut**.
+4. Click **Create cinematic video** and preview the result.
+
+Output: `workspace/jobs/JOB_ID/short_cinematic.mp4`.
+
+This feature is **non-destructive**: it does not resynthesize narration or overwrite
+`short.mp4`, `narration.wav`, or approved scene images. Music is looped or
+trimmed to the original video's length, faded in/out, and ducked under speech
+using FFmpeg. Crossfades start at the original scene boundaries: the outgoing
+image is held briefly while the incoming image fades in, preserving the
+audio-to-scene start times and total video frame count. Crossfades require
+`timeline.json` and `clips/scene_XX.mp4` from a `--scene-audio` render.
+Music-only finishing works without those files. The music is **user-supplied**;
+HistoryForgeAI does not fetch, generate, or license music automatically.
 
 ### Character references
 

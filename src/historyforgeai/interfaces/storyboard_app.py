@@ -20,7 +20,7 @@ if not job_dir or not (job_dir/'storyboard.json').exists():
 if st.session_state.get('_active_storyboard_job') != str(job_dir):
     for key in list(st.session_state):
         if key.startswith(('path', 'url', 'lic', 'attr', 'status', 'upload',
-                           'narration_', 'visual_', 'query_')):
+                           'narration_', 'visual_', 'query_', 'cinematic_')):
             st.session_state.pop(key, None)
     st.session_state.pop('image_swap_from', None)
     st.session_state.pop('image_swap_to', None)
@@ -342,3 +342,91 @@ if st.button('Render with selected narration', disabled=not confirm_render):
                 st.video(str(video))
     except Exception as exc:
         st.error(f'Render failed: {exc}')
+
+
+st.divider()
+st.subheader('Step 4 · Cinematic Finishing')
+st.caption('Add licensed background music and smooth scene transitions to your existing '
+           'synchronized video. This does not regenerate narration, change approvals, '
+           'or overwrite short.mp4.')
+from historyforgeai.application.services.cinematic_finishing import (
+    find_background_music, import_background_music, finish_video,
+)
+
+rendered_short = job_dir / 'short.mp4'
+if not rendered_short.is_file():
+    st.info('Render the synchronized Short in Step 3 first.')
+else:
+    st.markdown('**Background music**')
+    st.caption('Download an MP3/WAV/M4A from YouTube Audio Library, Pixabay or another '
+               'source whose license permits your intended use. Keep any required attribution.')
+    music_upload = st.file_uploader(
+        'Choose a background music file from your computer',
+        type=['mp3', 'wav', 'm4a'],
+        key='cinematic_music_upload',
+        help='The music is copied into this job; maximum 40 MB.',
+    )
+    if st.button('Save music to this job', disabled=music_upload is None):
+        try:
+            imported = import_background_music(
+                job_dir, music_upload.name, music_upload.getvalue()
+            )
+            st.success(f'Saved background music: {imported.name}')
+            st.session_state['cinematic_use_music'] = True
+            st.rerun()
+        except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            st.error(f'Music import failed: {exc}')
+    saved_music = find_background_music(job_dir)
+    if saved_music:
+        st.caption(f'Saved track: {saved_music.name}')
+        st.audio(str(saved_music))
+    st.session_state.setdefault('cinematic_use_music', bool(saved_music))
+    use_music = st.checkbox(
+        'Include saved background music',
+        disabled=saved_music is None,
+        key='cinematic_use_music',
+    )
+    volume = st.slider(
+        'Background music volume (%)', min_value=0, max_value=40, value=15,
+        step=1, disabled=not use_music, key='cinematic_volume',
+    )
+    duck = st.checkbox(
+        'Automatically lower music while narration plays',
+        value=True, disabled=not use_music, key='cinematic_duck',
+    )
+    st.markdown('**Scene transitions**')
+    transition_label = st.selectbox(
+        'Transition style', ['Cinematic crossfade', 'Hard cut (original timing)'],
+        key='cinematic_transition',
+    )
+    crossfade = transition_label == 'Cinematic crossfade'
+    fade_seconds = st.slider(
+        'Crossfade duration (seconds)', min_value=0.2, max_value=1.0,
+        value=0.4, step=0.1, disabled=not crossfade,
+        key='cinematic_fade_seconds',
+    )
+    st.caption('Crossfades begin at existing narration boundaries, briefly blending '
+               'the outgoing frame into the next scene without moving audio timing. '
+               'No changes are made to the original video.')
+    if st.button(
+        'Create cinematic video',
+        type='primary',
+        disabled=not crossfade and not (use_music and saved_music),
+    ):
+        try:
+            finished = finish_video(
+                job_dir,
+                music_path=saved_music if use_music else None,
+                music_volume=volume / 100,
+                duck_music=duck,
+                transition='crossfade' if crossfade else 'cut',
+                transition_seconds=fade_seconds,
+            )
+            st.success(f'Cinematic version ready: {finished.name}')
+        except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            st.error(f'Cinematic finishing failed: {exc}')
+    cinematic_output = job_dir / 'short_cinematic.mp4'
+    if cinematic_output.is_file():
+        st.markdown('**Cinematic video preview**')
+        st.video(str(cinematic_output))
+        st.caption(f'Saved to {cinematic_output}')
