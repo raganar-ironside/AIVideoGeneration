@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import streamlit as st
 from historyforgeai.application.services.storyboard import load, save, apply_approved, approve_available_images
+from historyforgeai.application.services.scene_alignment import duplicate_image_groups, scene_mapping_issues, swap_scene_images
 from historyforgeai.application.services.script_review import save_script_edits, approve_script, script_approved
 from historyforgeai.domain.models import ShortPlan
 from historyforgeai.infrastructure.assets.commons_candidates import search_commons
@@ -52,6 +53,48 @@ board_path=job_dir/'storyboard.json'
 board=load(board_path)
 st.caption(f'{board.topic} · {len(board.shots)} scenes')
 
+st.markdown('**Scene-to-narration alignment check**')
+st.caption('Each numbered image must illustrate the narration directly beneath it. '
+           'Scene-audio timing cannot fix an image attached to the wrong scene.')
+issues = scene_mapping_issues(plan, board)
+for issue in issues:
+    st.warning(issue)
+duplicate_groups = duplicate_image_groups(board)
+for group in duplicate_groups:
+    st.warning('Same image content used in scenes ' + ', '.join(map(str, group)) +
+               '. Reuse may be intentional, but verify it matches each narration.')
+gallery = st.columns(min(4, max(1, len(board.shots))))
+for i, shot in enumerate(board.shots):
+    with gallery[i % len(gallery)]:
+        st.markdown(f'**Scene {shot.scene_index}**')
+        if shot.candidate_image and Path(shot.candidate_image).expanduser().is_file():
+            st.image(str(Path(shot.candidate_image).expanduser()), width=180)
+        else:
+            st.caption('No image assigned')
+        st.caption('Spoken: ' + shot.narration)
+        st.caption('Expected visual: ' + shot.visual_description)
+
+scene_indexes = [shot.scene_index for shot in board.shots]
+if len(scene_indexes) >= 2:
+    left, right = st.columns(2)
+    with left:
+        swap_from = st.selectbox('Image in scene', scene_indexes, key='image_swap_from')
+    with right:
+        swap_to = st.selectbox('Swap with image in scene', scene_indexes,
+                               index=1, key='image_swap_to')
+    if st.button('Swap scene images', help='Save review edits first. Both swapped images must be approved again.'):
+        try:
+            swap_scene_images(board, swap_from, swap_to)
+            save(board_path, board)
+            for idx in (swap_from, swap_to):
+                for prefix in ('path', 'url', 'lic', 'attr', 'status'):
+                    st.session_state.pop(f'{prefix}{idx}', None)
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+st.caption('After swapping, review the two images and approve them again before rendering.')
+
+
 # This callback runs before Streamlit redraws widgets, so status selectors
 # reflect bulk approval immediately without requiring a second click.
 def bulk_approve():
@@ -90,6 +133,11 @@ for shot in board.shots:
     with st.expander(f'Scene {shot.scene_index}: {shot.narration[:90]}',expanded=True):
         st.write(shot.narration)
         st.caption(shot.visual_description)
+        scene_audio_path = job_dir / f'narration_scene_{shot.scene_index:02d}.wav'
+        if scene_audio_path.is_file():
+            st.caption('Last generated narration for this scene — listen and compare with the image')
+            st.audio(str(scene_audio_path))
+
         st.write('Characters: '+(', '.join(shot.character_ids) or 'none'))
         if shot.candidate_image and Path(shot.candidate_image).is_file():
             st.image(shot.candidate_image,width=280)
@@ -205,7 +253,7 @@ if preview_path.is_file():
     st.audio(str(preview_path))
 
 st.caption('Full render overwrites short.mp4 and narration.wav. Back up existing files first.')
-confirm_render = st.checkbox('I have reviewed my script and images and want to generate the video')
+confirm_render = st.checkbox('I verified that every numbered image matches its spoken narration and want to render')
 if st.button('Render with selected narration', disabled=not confirm_render):
     try:
         cmd = [
