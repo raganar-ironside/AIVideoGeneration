@@ -83,3 +83,11 @@ def approve_available_images(storyboard: Storyboard) -> tuple[list[int], list[in
         shot.status = 'approved'
         approved.append(shot.scene_index)
     return approved, skipped
+
+
+def approve_saved_images(board_path: Path) -> tuple[list[int], list[int]]:
+    """Bulk-approve the persisted storyboard without trusting stale UI values."""
+    storyboard = load(board_path)
+    approved, skipped = approve_available_images(storyboard)
+    save(board_path, storyboard)
+    return approved, skipped
