@@ -74,3 +74,33 @@ def test_bulk_approval_skips_missing_without_erasing_other_images(tmp_path):
     assert board.shots[0].candidate_image == str(image)
     assert board.shots[0].status == "approved"
     assert board.shots[1].candidate_image is None
+
+
+def test_scene_review_widgets_do_not_mix_session_state_with_defaults():
+    """Prevent Streamlit's 'default value and Session State API' warning."""
+    import ast
+    from pathlib import Path
+
+    app = Path(__file__).resolve().parents[1] / "src/historyforgeai/interfaces/storyboard_app.py"
+    tree = ast.parse(app.read_text(encoding="utf-8"))
+    checked = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and
+                func.attr in {"text_input", "selectbox"}):
+            continue
+        labels = [arg.value for arg in node.args if isinstance(arg, ast.Constant)
+                  and isinstance(arg.value, str)]
+        if not labels or labels[0] not in {
+            "Approved local image path", "Source URL", "License / usage rights",
+            "Attribution", "Review status",
+        }:
+            continue
+        kwargs = {keyword.arg for keyword in node.keywords}
+        assert "key" in kwargs
+        assert "value" not in kwargs
+        assert "index" not in kwargs
+        checked += 1
+    assert checked == 5
