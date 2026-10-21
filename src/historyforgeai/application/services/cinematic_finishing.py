@@ -149,13 +149,21 @@ def finish_video(job_dir: Path, music_path: Path | None = None,
     if not music and transition == 'cut':
         raise ValueError('Choose a music track or a crossfade transition')
     has_voice = _stream(original_info, 'audio') is not None
+    # Never silently change narration-to-scene alignment if an old timeline
+    # is paired with a newly rendered short.mp4.
+    expected_frames = video_stream.get('nb_frames')
     temp_video = job_dir / 'cinematic_transitions.partial.mp4'
     temp_output = job_dir / 'short_cinematic.partial.mp4'
     final = job_dir / 'short_cinematic.mp4'
     try:
         source = original
         if transition == 'crossfade':
-            _transition_video(job_dir, fps, transition_seconds, temp_video)
+            timeline_frames = _transition_video(job_dir, fps, transition_seconds, temp_video)
+            if expected_frames and abs(timeline_frames - int(expected_frames)) > 1:
+                raise ValueError(
+                    'Scene timeline does not match the rendered video. '
+                    'Render with --scene-audio again before adding crossfades.'
+                )
             source = temp_video
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', str(source)]
         # The original video's narration is the source of truth. Never re-synthesize it.
