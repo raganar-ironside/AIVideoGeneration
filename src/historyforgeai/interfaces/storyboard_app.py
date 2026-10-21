@@ -52,6 +52,9 @@ st.subheader('Step 2 · Review scene images')
 board_path=job_dir/'storyboard.json'
 board=load(board_path)
 st.caption(f'{board.topic} · {len(board.shots)} scenes')
+upload_feedback = st.session_state.pop('upload_feedback', None)
+if upload_feedback:
+    st.success(f'Scene {upload_feedback[0]} image imported. Review it, then approve.')
 
 st.markdown('**Scene-to-narration alignment check**')
 st.caption('Each numbered image must illustrate the narration directly beneath it. '
@@ -141,6 +144,31 @@ for shot in board.shots:
         st.write('Characters: '+(', '.join(shot.character_ids) or 'none'))
         if shot.candidate_image and Path(shot.candidate_image).is_file():
             st.image(shot.candidate_image,width=280)
+        uploaded = st.file_uploader(
+            'Browse / Upload Image (opens your computer file picker)',
+            type=['png', 'jpg', 'jpeg', 'webp'],
+            key=f'upload{shot.scene_index}',
+            help='Select a picture from Windows File Explorer or your browser device. '
+                 'The image is copied into this job and awaits review.',
+        )
+        if st.button('Use uploaded image for this scene',
+                     key=f'use_upload{shot.scene_index}',
+                     disabled=uploaded is None):
+            try:
+                # Persist other in-progress review edits before reloading the board.
+                save(board_path, board)
+                from historyforgeai.application.services.image_candidates import create_uploaded_candidate
+                destination = create_uploaded_candidate(
+                    job_dir, shot.scene_index, uploaded.getvalue()
+                )
+                for prefix in ('path', 'url', 'lic', 'attr', 'status'):
+                    st.session_state.pop(f'{prefix}{shot.scene_index}', None)
+                st.session_state['upload_feedback'] = (
+                    shot.scene_index, str(destination)
+                )
+                st.rerun()
+            except (ValueError, OSError) as exc:
+                st.error(f'Upload failed: {exc}')
         new_path=st.text_input('Approved local image path',value=shot.candidate_image or '',key=f'path{shot.scene_index}')
         shot.candidate_image=new_path or None
         shot.source_url=st.text_input('Source URL',value=shot.source_url or '',key=f'url{shot.scene_index}') or None
