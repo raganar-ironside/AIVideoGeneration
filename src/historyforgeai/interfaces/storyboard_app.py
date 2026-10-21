@@ -20,7 +20,7 @@ if not job_dir or not (job_dir/'storyboard.json').exists():
 if st.session_state.get('_active_storyboard_job') != str(job_dir):
     for key in list(st.session_state):
         if key.startswith(('path', 'url', 'lic', 'attr', 'status', 'upload',
-                           'narration_', 'visual_', 'query_')):
+                           'narration_', 'visual_', 'query_', 'cinematic_')):
             st.session_state.pop(key, None)
     st.session_state.pop('image_swap_from', None)
     st.session_state.pop('image_swap_to', None)
