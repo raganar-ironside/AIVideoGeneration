@@ -120,20 +120,20 @@ scroll to **Step 4 · Cinematic Finishing**:
 1. Download a track you are licensed to use (e.g., YouTube Audio Library).
    Check attribution and commercial-use requirements yourself.
 2. Upload an MP3, WAV or M4A (maximum 40 MB), then click **Save music to this job**.
-   The file is stored in the job's \`assets/\` directory and can be reused.
+   The file is stored in the job's `assets/` directory and can be reused.
 3. Choose a music level (start at **15%**), enable **Automatically lower music while narration plays**,
    and select **Cinematic crossfade** (start with **0.4 seconds**) or **Hard cut**.
 4. Click **Create cinematic video** and preview the result.
 
-Output: \`workspace/jobs/JOB_ID/short_cinematic.mp4\`.
+Output: `workspace/jobs/JOB_ID/short_cinematic.mp4`.
 
 This feature is **non-destructive**: it does not resynthesize narration or overwrite
-\`short.mp4\`, \`narration.wav\`, or approved scene images. Music is looped or
+`short.mp4`, `narration.wav`, or approved scene images. Music is looped or
 trimmed to the original video's length, faded in/out, and ducked under speech
 using FFmpeg. Crossfades start at the original scene boundaries: the outgoing
 image is held briefly while the incoming image fades in, preserving the
 audio-to-scene start times and total video frame count. Crossfades require
-\`timeline.json\` and \`clips/scene_XX.mp4\` from a \`--scene-audio\` render.
+`timeline.json` and `clips/scene_XX.mp4` from a `--scene-audio` render.
 Music-only finishing works without those files. The music is **user-supplied**;
 HistoryForgeAI does not fetch, generate, or license music automatically.
 
