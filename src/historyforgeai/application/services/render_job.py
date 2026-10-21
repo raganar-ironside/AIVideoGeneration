@@ -6,7 +6,7 @@ from pathlib import Path
 
 from historyforgeai.application.services.storyboard import apply_approved
 from historyforgeai.application.services.script_review import script_approved
-from historyforgeai.application.services.timeline import build_timeline
+from historyforgeai.application.services.timeline import build_timeline, frame_aligned_duration
 from historyforgeai.domain.models import JobStatus, ShortPlan
 
 
@@ -43,7 +43,7 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
                 probe = subprocess.check_output(
                     ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                      "-of", "default=noprint_wrappers=1:nokey=1", str(part)], text=True)
-                duration = float(probe.strip()) + 0.25
+                duration = frame_aligned_duration(float(probe.strip()), getattr(renderer, 'fps', 24))
                 pad = folder / f"narration_padded_{scene.index:02d}.wav"
                 subprocess.run(
                     ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",

@@ -49,11 +49,13 @@ def apply_approved(plan_path: Path, storyboard_path: Path) -> int:
     storyboard = load(storyboard_path)
     plan = ShortPlan.model_validate_json(plan_path.read_text(encoding='utf-8'))
     by_index = {shot.scene_index: shot for shot in storyboard.shots}
-    if len(by_index) != len(plan.scenes):
-        raise ValueError('Storyboard scene count does not match plan')
+    if len(by_index) != len(storyboard.shots) or set(by_index) != {scene.index for scene in plan.scenes}:
+        raise ValueError('Storyboard scene indexes do not match plan')
     for scene in plan.scenes:
         shot = by_index[scene.index]
-        if shot.status != 'approved' or not shot.candidate_image or not Path(shot.candidate_image).is_file():
+        if shot.narration.strip() != scene.narration.strip() or shot.visual_description.strip() != scene.visual_description.strip():
+            raise ValueError(f'Scene {scene.index} storyboard text differs from approved script; review alignment again')
+        if shot.status != 'approved' or not shot.candidate_image or not Path(shot.candidate_image).expanduser().is_file():
             raise ValueError(f'Scene {scene.index} needs an approved, existing image')
         scene.image_path = shot.candidate_image
         scene.asset_source_url = shot.source_url

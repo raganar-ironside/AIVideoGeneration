@@ -77,6 +77,7 @@ def save_script_edits(job_dir: Path, edits: dict[int, dict[str, str]]) -> list[i
     for audio in [job_dir / "narration.wav", *job_dir.glob("narration_scene_*.wav"),
                   *job_dir.glob("narration_padded_*.wav")]:
         audio.unlink(missing_ok=True)
+    (job_dir / 'timeline.json').unlink(missing_ok=True)
     save(board_path, board)
     plan_path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     return changes
