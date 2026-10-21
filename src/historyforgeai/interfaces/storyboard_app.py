@@ -155,8 +155,9 @@ for shot in board.shots:
                      key=f'use_upload{shot.scene_index}',
                      disabled=uploaded is None):
             try:
-                # Persist other in-progress review edits before reloading the board.
-                save(board_path, board)
+                # Import against the latest saved storyboard, not the in-memory
+                # board. Earlier widgets in this rerun may have stale paths;
+                # saving them here could erase other scenes' imported images.
                 from historyforgeai.application.services.image_candidates import create_uploaded_candidate
                 destination = create_uploaded_candidate(
                     job_dir, shot.scene_index, uploaded.getvalue()
