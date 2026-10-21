@@ -67,3 +67,25 @@ def test_scene_mapping_reports_stale_text_and_missing_image(tmp_path):
     assert any("Scene 2: storyboard narration differs" in issue for issue in issues)
     assert any("Scene 2: no existing image" in issue for issue in issues)
     assert not any("Scene 1:" in issue for issue in issues)
+
+
+def test_apply_approved_rejects_stale_narration(tmp_path):
+    from historyforgeai.application.services.storyboard import apply_approved, save
+
+    image = tmp_path / "scene.png"
+    Image.new("RGB", (10, 10)).save(image)
+    plan = ShortPlan(topic="Cholas", title="Temple", narration="Correct", scenes=[
+        Scene(index=1, duration_seconds=2, narration="Correct",
+              visual_description="Temple", asset_query="temple"),
+    ])
+    board = Storyboard(topic="Cholas", shots=[
+        Shot(scene_index=1, narration="Stale", visual_description="Temple",
+             search_query="temple", candidate_image=str(image), status="approved"),
+    ])
+    plan_path = tmp_path / "scene_plan.json"
+    board_path = tmp_path / "storyboard.json"
+    plan_path.write_text(plan.model_dump_json())
+    save(board_path, board)
+    with pytest.raises(ValueError, match="storyboard text differs"):
+        apply_approved(plan_path, board_path)
+    assert ShortPlan.model_validate_json(plan_path.read_text()).scenes[0].image_path is None
