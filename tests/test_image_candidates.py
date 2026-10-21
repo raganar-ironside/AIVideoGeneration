@@ -133,3 +133,41 @@ def test_sequential_scene_uploads_preserve_earlier_uploads(job_dir):
         for previous_index in range(1, index + 1):
             assert current.shots[previous_index - 1].candidate_image == destinations[previous_index]
             assert Path(destinations[previous_index]).is_file()
+
+
+def test_recover_missing_images_preserves_existing_assignments(job_dir):
+    from historyforgeai.application.services.image_candidates import recover_missing_candidates
+
+    board_path = job_dir / "storyboard.json"
+    board = load(board_path)
+    assets = job_dir / "assets"
+    assets.mkdir()
+    recovered_file = assets / "candidate_scene_01.jpg"
+    Image.new("RGB", (60, 60), "blue").save(recovered_file)
+    existing = job_dir / "existing.jpg"
+    Image.new("RGB", (70, 70), "green").save(existing)
+    board.shots.append(Shot(
+        scene_index=2, narration="Second", visual_description="Temple",
+        search_query="temple", candidate_image=str(existing),
+        status="approved", attribution="Original creator"
+    ))
+    save(board_path, board)
+
+    assert recover_missing_candidates(job_dir) == [1]
+    result = load(board_path)
+    assert result.shots[0].candidate_image == str(recovered_file)
+    assert result.shots[0].status == "pending_review"
+    assert result.shots[1].candidate_image == str(existing)
+    assert result.shots[1].status == "approved"
+    assert result.shots[1].attribution == "Original creator"
+    assert recover_missing_candidates(job_dir) == []
+
+
+def test_recover_skips_unreadable_files(job_dir):
+    from historyforgeai.application.services.image_candidates import recover_missing_candidates
+
+    assets = job_dir / "assets"
+    assets.mkdir()
+    (assets / "candidate_scene_01.jpg").write_bytes(b"corrupted")
+    assert recover_missing_candidates(job_dir) == []
+    assert load(job_dir / "storyboard.json").shots[0].candidate_image is None
