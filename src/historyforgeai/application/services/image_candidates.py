@@ -125,3 +125,39 @@ def create_uploaded_candidate(job_dir: Path, scene_index: int, image_bytes: byte
         return create_candidate(job_dir, scene_index, provider="manual", source=temp_path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def recover_missing_candidates(job_dir: Path) -> list[int]:
+    """Restore missing storyboard assignments from the job's imported JPEGs.
+
+    Never replace a valid existing image assignment. Recovered scenes return
+    to pending review; the user must approve them before rendering.
+    """
+    job_dir = Path(job_dir).resolve()
+    board_path = job_dir / "storyboard.json"
+    board = load(board_path)
+    recovered = []
+    for shot in board.shots:
+        current = Path(shot.candidate_image).expanduser() if shot.candidate_image else None
+        if current is not None:
+            try:
+                with Image.open(current) as image:
+                    image.verify()
+                continue
+            except (OSError, ValueError, Image.DecompressionBombError):
+                pass
+        candidate = job_dir / "assets" / f"candidate_scene_{shot.scene_index:02d}.jpg"
+        try:
+            with Image.open(candidate) as image:
+                image.verify()
+        except (OSError, ValueError, Image.DecompressionBombError):
+            continue
+        shot.candidate_image = str(candidate)
+        shot.status = "pending_review"
+        shot.source_url = None
+        shot.license = None
+        shot.attribution = None
+        recovered.append(shot.scene_index)
+    if recovered:
+        save(board_path, board)
+    return recovered
