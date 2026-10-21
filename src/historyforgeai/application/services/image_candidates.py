@@ -101,3 +101,27 @@ def create_candidate(job_dir: Path, scene_index: int, provider: str = "manual",
     shot.attribution = None
     save(board_path, board)
     return destination
+
+
+def create_uploaded_candidate(job_dir: Path, scene_index: int, image_bytes: bytes) -> Path:
+    """Import an image from Streamlit's browser file picker for scene review.
+
+    Uploaded bytes are never trusted as a filesystem path. Reuse the manual
+    candidate import for image validation, JPEG conversion and review reset.
+    """
+    import tempfile
+
+    if not image_bytes or len(image_bytes) > 20 * 1024 * 1024:
+        raise ValueError("Upload must be a nonempty image of at most 20 MB")
+    job_dir = Path(job_dir).resolve()
+    if not (job_dir / "storyboard.json").is_file():
+        raise FileNotFoundError("Storyboard does not exist")
+    staging = job_dir / "assets"
+    staging.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=staging, suffix=".upload", delete=False) as handle:
+        temp_path = Path(handle.name)
+        handle.write(image_bytes)
+    try:
+        return create_candidate(job_dir, scene_index, provider="manual", source=temp_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
