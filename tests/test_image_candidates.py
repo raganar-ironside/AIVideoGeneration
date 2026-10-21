@@ -79,3 +79,57 @@ def test_oversized_upload_is_rejected(job_dir):
 
     with pytest.raises(ValueError, match="20 MB"):
         create_uploaded_candidate(job_dir, 1, b"x" * (20 * 1024 * 1024 + 1))
+
+
+def test_upload_to_one_scene_preserves_other_scene_images_and_reviews(job_dir):
+    from io import BytesIO
+    from historyforgeai.application.services.image_candidates import create_uploaded_candidate
+
+    existing = job_dir / "previous_scene.jpg"
+    Image.new("RGB", (30, 30), "blue").save(existing)
+    board_path = job_dir / "storyboard.json"
+    board = load(board_path)
+    board.shots.extend([
+        Shot(scene_index=2, narration="Second", visual_description="Another view",
+             search_query="view", candidate_image=str(existing), status="approved",
+             source_url="https://example.org/image", license="CC BY", attribution="Author"),
+        Shot(scene_index=3, narration="Third", visual_description="Other view",
+             search_query="other", status="rejected"),
+    ])
+    save(board_path, board)
+    previous_second = board.shots[1].model_dump()
+    previous_third = board.shots[2].model_dump()
+
+    image = BytesIO()
+    Image.new("RGB", (48, 80), "red").save(image, format="PNG")
+    uploaded_path = create_uploaded_candidate(job_dir, 1, image.getvalue())
+
+    result = load(board_path)
+    assert result.shots[0].candidate_image == str(uploaded_path)
+    assert result.shots[0].status == "pending_review"
+    assert result.shots[1].model_dump() == previous_second
+    assert result.shots[2].model_dump() == previous_third
+    assert existing.is_file()
+
+
+def test_sequential_scene_uploads_preserve_earlier_uploads(job_dir):
+    from io import BytesIO
+    from historyforgeai.application.services.image_candidates import create_uploaded_candidate
+
+    board_path = job_dir / "storyboard.json"
+    board = load(board_path)
+    board.shots.extend([
+        Shot(scene_index=index, narration=f"Scene {index}",
+             visual_description="Temple", search_query="temple")
+        for index in range(2, 9)
+    ])
+    save(board_path, board)
+    destinations = {}
+    for index in range(1, 9):
+        image = BytesIO()
+        Image.new("RGB", (32 + index, 32), (index * 20, 0, 0)).save(image, format="PNG")
+        destinations[index] = str(create_uploaded_candidate(job_dir, index, image.getvalue()))
+        current = load(board_path)
+        for previous_index in range(1, index + 1):
+            assert current.shots[previous_index - 1].candidate_image == destinations[previous_index]
+            assert Path(destinations[previous_index]).is_file()
