@@ -2,11 +2,12 @@
 import sys
 from pathlib import Path
 import streamlit as st
-from historyforgeai.application.services.storyboard import load, save, apply_approved, approve_available_images
+from historyforgeai.application.services.storyboard import load, save, apply_approved, approve_saved_images
 from historyforgeai.application.services.scene_alignment import duplicate_image_groups, scene_mapping_issues, swap_scene_images
 from historyforgeai.application.services.script_review import save_script_edits, approve_script, script_approved
 from historyforgeai.domain.models import ShortPlan
 from historyforgeai.infrastructure.assets.commons_candidates import search_commons
+from historyforgeai.application.services.image_candidates import recover_missing_candidates
 
 st.set_page_config(page_title='HistoryForgeAI Storyboard',layout='wide')
 st.title('HistoryForgeAI · Storyboard review')
@@ -14,6 +15,16 @@ job_dir = Path(sys.argv[-1]).expanduser().resolve() if len(sys.argv)>1 and sys.a
 if not job_dir or not (job_dir/'storyboard.json').exists():
     st.info('Launch: streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/JOB_ID')
     st.stop()
+# Streamlit retains widget state across page reruns and even job switches.
+# Do not let paths from a different job overwrite this job's storyboard.
+if st.session_state.get('_active_storyboard_job') != str(job_dir):
+    for key in list(st.session_state):
+        if key.startswith(('path', 'url', 'lic', 'attr', 'status', 'upload',
+                           'narration_', 'visual_', 'query_')):
+            st.session_state.pop(key, None)
+    st.session_state.pop('image_swap_from', None)
+    st.session_state.pop('image_swap_to', None)
+    st.session_state['_active_storyboard_job'] = str(job_dir)
 plan_path = job_dir / 'scene_plan.json'
 if not plan_path.is_file():
     st.error('Missing scene_plan.json')
@@ -101,25 +112,24 @@ st.caption('After swapping, review the two images and approve them again before 
 # This callback runs before Streamlit redraws widgets, so status selectors
 # reflect bulk approval immediately without requiring a second click.
 def bulk_approve():
+    # Use the saved storyboard as the source of truth. Session-state fields
+    # may be stale or empty after uploads and must not overwrite image paths.
+    approved, skipped = approve_saved_images(board_path)
     latest = load(board_path)
     for shot in latest.shots:
         idx = shot.scene_index
+        # Refresh every widget from the persisted result before rerun.
         for field, prefix in (
             ('candidate_image', 'path'),
             ('source_url', 'url'),
             ('license', 'lic'),
             ('attribution', 'attr'),
         ):
-            key = f'{prefix}{idx}'
-            if key in st.session_state:
-                setattr(shot, field, st.session_state[key] or None)
-        shot.status = st.session_state.get(f'status{idx}', shot.status)
-    approved, skipped = approve_available_images(latest)
-    save(board_path, latest)
-    for idx in approved:
-        st.session_state[f'status{idx}'] = 'approved'
+            st.session_state[f'{prefix}{idx}'] = getattr(shot, field) or ''
+        st.session_state[f'status{idx}'] = shot.status
     st.session_state['bulk_approval_feedback'] = (approved, skipped)
 
+st.caption('Save any manual path or metadata edits with **Save review** before bulk approval.')
 st.button(
     'Approve All Images',
     on_click=bulk_approve,
@@ -131,6 +141,25 @@ if feedback is not None:
     st.success(f'Approved {len(approved)} image(s).')
     if skipped:
         st.warning('Skipped scenes with missing or unreadable images: ' + ', '.join(map(str, skipped)))
+
+if st.button('Recover missing images from job assets',
+             help='Reattach candidate_scene_XX.jpg files when an earlier review cleared their assignments.'):
+    try:
+        restored = recover_missing_candidates(job_dir)
+        for idx in restored:
+            for prefix in ('path', 'url', 'lic', 'attr', 'status'):
+                st.session_state.pop(f'{prefix}{idx}', None)
+        st.session_state['recovery_feedback'] = restored
+        st.rerun()
+    except (ValueError, OSError) as exc:
+        st.error(f'Recovery failed: {exc}')
+recovered = st.session_state.pop('recovery_feedback', None)
+if recovered is not None:
+    if recovered:
+        st.success('Recovered scene images: ' + ', '.join(map(str, recovered)) +
+                   '. Review and approve them again.')
+    else:
+        st.info('No missing scene images could be recovered from job assets.')
 
 for shot in board.shots:
     with st.expander(f'Scene {shot.scene_index}: {shot.narration[:90]}',expanded=True):
@@ -188,7 +217,8 @@ if st.button('Save review',type='primary'):
     save(board_path,board)
     st.success('Storyboard saved')
 if st.button('Apply approved images to scene plan'):
-    save(board_path,board)
+    # Apply only the saved, approved storyboard; never persist potentially
+    # stale values assembled during this Streamlit rerun.
     try:
         count=apply_approved(job_dir/'scene_plan.json',board_path)
         st.success(f'Applied {count} approved images')
