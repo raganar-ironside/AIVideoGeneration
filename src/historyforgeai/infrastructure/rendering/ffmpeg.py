@@ -59,7 +59,8 @@ class FFmpegRenderer:
             clip = clips / f"scene_{scene.index:02d}.mp4"
             self._frame(scene, frame, plan.title)
             subprocess.run(["ffmpeg","-hide_banner","-loglevel","error","-y","-loop","1","-framerate",str(self.fps),
-                "-i",str(frame),"-t",str(scene.duration_seconds),"-vf",zoompan_filter(self.width, self.height, self.fps, scene.duration_seconds, motion),
+                "-i",str(frame),"-vf",zoompan_filter(self.width, self.height, self.fps, scene.duration_seconds, motion),
+                "-frames:v",str(max(1, round(scene.duration_seconds * self.fps))),
                 "-c:v","libx264","-preset","ultrafast","-crf","27","-pix_fmt","yuv420p",str(clip)],
                 check=True, timeout=180)
             paths.append(clip)
