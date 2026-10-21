@@ -162,6 +162,18 @@ if recovered is not None:
         st.info('No missing scene images could be recovered from job assets.')
 
 for shot in board.shots:
+    # Set defaults in session state only when the scene widget is first
+    # created. After uploads or bulk approval, callbacks can safely update
+    # these keys without conflicting with value=/index= widget defaults.
+    idx = shot.scene_index
+    for prefix, value in (
+        ('path', shot.candidate_image),
+        ('url', shot.source_url),
+        ('lic', shot.license),
+        ('attr', shot.attribution),
+    ):
+        st.session_state.setdefault(f'{prefix}{idx}', value or '')
+    st.session_state.setdefault(f'status{idx}', shot.status)
     with st.expander(f'Scene {shot.scene_index}: {shot.narration[:90]}',expanded=True):
         st.write(shot.narration)
         st.caption(shot.visual_description)
@@ -199,13 +211,13 @@ for shot in board.shots:
                 st.rerun()
             except (ValueError, OSError) as exc:
                 st.error(f'Upload failed: {exc}')
-        new_path=st.text_input('Approved local image path',value=shot.candidate_image or '',key=f'path{shot.scene_index}')
+        new_path=st.text_input('Approved local image path',key=f'path{shot.scene_index}')
         shot.candidate_image=new_path or None
-        shot.source_url=st.text_input('Source URL',value=shot.source_url or '',key=f'url{shot.scene_index}') or None
-        shot.license=st.text_input('License / usage rights',value=shot.license or '',key=f'lic{shot.scene_index}') or None
-        shot.attribution=st.text_input('Attribution',value=shot.attribution or '',key=f'attr{shot.scene_index}') or None
+        shot.source_url=st.text_input('Source URL',key=f'url{shot.scene_index}') or None
+        shot.license=st.text_input('License / usage rights',key=f'lic{shot.scene_index}') or None
+        shot.attribution=st.text_input('Attribution',key=f'attr{shot.scene_index}') or None
         shot.status=st.selectbox('Review status',['pending_review','approved','rejected'],
-            index=['pending_review','approved','rejected'].index(shot.status),key=f'status{shot.scene_index}')
+            key=f'status{shot.scene_index}')
         if st.button('Search Wikimedia Commons',key=f'search{shot.scene_index}'):
             try:
                 for candidate in search_commons(shot.search_query):
