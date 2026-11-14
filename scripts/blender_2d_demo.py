@@ -14,7 +14,7 @@ from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
 
 
 def create_demo_assets(job: Path) -> None:
-    assets = job / "animation" / "assets"
+    assets = job / "animation" / "assets" / "scene_01"
     assets.mkdir(parents=True, exist_ok=True)
 
     # Fortress background; an approved scene image would replace this in real jobs.
