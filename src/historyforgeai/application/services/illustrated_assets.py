@@ -187,7 +187,7 @@ def _default_spec(scene_index: int, mode: str) -> dict:
                           {"t": 0.45, "rotation_deg": 65},
                           {"t": 1, "rotation_deg": 65}],
         },
-    ]
+    ]}
 
 
 def _draft_dir(job_dir: Path, scene_index: int) -> Path:
