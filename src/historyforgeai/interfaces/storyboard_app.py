@@ -412,6 +412,43 @@ if draft:
     if draft.status == 'approved':
         approved_spec = job_dir / 'animation' / f'scene_{cutout_scene:02d}.json'
         if approved_spec.is_file():
+            with st.expander('Puppet rig builder — joints and pivots'):
+                import json as _rig_json
+                rig_data = _rig_json.loads(approved_spec.read_text(encoding='utf-8'))
+                joint_rows = [
+                    {
+                        'id': part['id'], 'parent': part.get('parent') or '',
+                        'x': part['x'], 'y': part['y'],
+                        'pivot_x': part['pivot'][0], 'pivot_y': part['pivot'][1],
+                        'width': part['width'], 'z': part['z'],
+                    } for part in rig_data['parts']
+                ]
+                edited_joints = st.data_editor(
+                    joint_rows, num_rows='fixed', hide_index=True,
+                    disabled=['id'], use_container_width=True,
+                    key=f'puppet_joint_editor_{cutout_scene}',
+                )
+                st.caption('Adjust bind positions and pivots to align your PNGs. '
+                           'Parent IDs must match another part. Review a rendered scene '
+                           'for actual parented motion.')
+                if st.button('Save and reapprove joint rig', key=f'puppet_joint_save_{cutout_scene}'):
+                    try:
+                        rows = (edited_joints.to_dict('records')
+                                if hasattr(edited_joints, 'to_dict') else edited_joints)
+                        for part, row in zip(rig_data['parts'], rows):
+                            part['parent'] = str(row['parent']).strip() or None
+                            part['x'] = float(row['x'])
+                            part['y'] = float(row['y'])
+                            part['pivot'] = [float(row['pivot_x']), float(row['pivot_y'])]
+                            part['width'] = float(row['width'])
+                            part['z'] = int(row['z'])
+                        update_approved_scene_spec(
+                            job_dir, cutout_scene, _rig_json.dumps(rig_data),
+                        )
+                        st.success('Puppet rig joints reapproved.')
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f'Joint update failed: {exc}')
             with st.expander('Adjust animation keyframes (advanced)'):
                 edited_spec = st.text_area(
                     'Reviewed Blender animation JSON', value=approved_spec.read_text(encoding='utf-8'),
@@ -424,8 +461,9 @@ if draft:
                         st.rerun()
                     except Exception as exc:
                         st.error(f'Animation update failed: {exc}')
-st.caption('AI body-arm generation is experimental: shoulder alignment and pivots are '
-           'approximate and may require edits. Automatic skeletal rigging is not implemented.')
+st.caption('Blender now uses parented puppet joints with easing. Full 12-part puppets '
+           'require separately prepared PNGs and manual joint alignment; Gemini body-arm '
+           'generation remains experimental. Automatic image separation is not implemented.')
 
 st.divider()
 st.subheader('Step 3 · Narration Studio')
