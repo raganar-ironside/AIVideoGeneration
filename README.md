@@ -13,7 +13,7 @@
 | Script and scene planning | Mock, Gemini, Ollama, Groq, OpenRouter, OpenAI | API credentials/model availability vary; drafts are not verified history |
 | Research | Optional Wikipedia background discovery | Not a fact-checking system |
 | Manual script import | JSON import with scene narration and duration validation | User must supply valid scene data |
-| Image sourcing | Wikimedia Commons, manual files, Hugging Face, OpenAI | Hosted calls may cost money; all candidate images require review |
+| Image sourcing | Wikimedia Commons, manual files, Hugging Face, OpenAI; Gemini Nano Banana illustrated cutouts | Hosted calls may cost money; all candidate images require review |
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
@@ -140,16 +140,18 @@ HistoryForgeAI does not fetch, generate, or license music automatically.
 ### Automated illustration and cutout preparation (optional)
 
 HistoryForgeAI can now generate **reviewable** illustrated characters and
-background candidates, or import manual artwork and optionally remove
+background candidates using **Gemini Nano Banana (default)** or OpenAI, or import manual artwork and optionally remove
 backgrounds locally. Choose a whole-character animation or experimental
 AI-assisted separate body/sword-arm layers. **Every cutout draft requires
 explicit approval before Blender uses it.** Generated body parts may need
 alignment corrections; this is not automatic skeletal rigging.
 
 ```bash
-# OpenAI image API: separately billed, explicit consent required
-historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider openai \
-  --mode whole --generate-background --allow-paid
+# Gemini API: potentially billed; explicit consent required
+# GEMINI_API_KEY in .env; install optional rembg for opaque image cutouts
+historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider gemini \
+  --mode whole --generate-background --remove-background \
+  --image-budget-usd 1.00 --allow-paid
 
 # Free alternative: use a transparent character image
 historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider manual \
@@ -162,7 +164,10 @@ historyforgeai cutouts approve --job JOB_ID --scene 1
 
 You can also prepare, preview, approve/reject, and edit keyframes from
 **Step 2.5** of the Streamlit reviewer. Backgrounds still need separate
-storyboard image approval. For details, see
+storyboard image approval. Each job has an estimated image request guard
+(default $1 and 8 attempts); this is **not** a guarantee of actual Google
+or OpenAI billing charges. Check usage with
+`historyforgeai cutouts budget --job JOB_ID`. For details, see
 **[Illustrated asset preparation](docs/ILLUSTRATED_ASSETS.md)**.
 
 ### Blender 2D illustrated characters (optional)

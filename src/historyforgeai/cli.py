@@ -63,13 +63,14 @@ def main():
     prep = cutsub.add_parser("prepare", help="Generate or import unapproved cutout drafts")
     prep.add_argument("--job", required=True)
     prep.add_argument("--scene", required=True, type=int)
-    prep.add_argument("--provider", choices=["manual", "openai"], default="manual")
+    prep.add_argument("--provider", choices=["gemini", "openai", "manual"], default="gemini")
     prep.add_argument("--mode", choices=["whole", "body-arm"], default="whole")
     prep.add_argument("--source", type=Path, help="Character reference or manual full-body PNG")
     prep.add_argument("--arm-source", type=Path, help="Manual transparent sword-arm PNG")
     prep.add_argument("--character-id", help="Approved character registry ID")
     prep.add_argument("--description", default="", help="Visual character description")
-    prep.add_argument("--model", help="OpenAI image model override")
+    prep.add_argument("--model", help="Image model override for Gemini or OpenAI")
+    prep.add_argument("--image-budget-usd", type=float, help="Per-job estimated image API budget in USD (default $1)")
     prep.add_argument("--allow-paid", action="store_true", help="Explicit consent for billed image API calls")
     prep.add_argument("--remove-background", action="store_true",
                       help="Use optional local rembg on opaque images")
@@ -77,10 +78,11 @@ def main():
                       help="Also generate a pending-review illustrated scene background")
     prep.add_argument("--replace-draft", action="store_true",
                       help="Replace an existing draft without touching an approved scene")
-    for action in ("approve", "reject", "show", "update-spec"):
+    for action in ("approve", "reject", "show", "update-spec", "budget"):
         subcmd = cutsub.add_parser(action)
         subcmd.add_argument("--job", required=True)
-        subcmd.add_argument("--scene", required=True, type=int)
+        if action != "budget":
+            subcmd.add_argument("--scene", required=True, type=int)
         if action == "update-spec":
             subcmd.add_argument("--file", type=Path, required=True, help="Reviewed animation JSON")
     sub.add_parser("list", help="List jobs")
@@ -198,11 +200,15 @@ def main():
                     source=args.source, arm_source=args.arm_source,
                     character_id=args.character_id, description=args.description,
                     model=args.model, allow_paid=args.allow_paid,
+                    image_budget_usd=args.image_budget_usd,
                     remove_background=args.remove_background,
                     generate_background=args.generate_background,
                     replace_draft=args.replace_draft,
                 )
                 print(result.model_dump_json(indent=2))
+            elif args.cutout_command == "budget":
+                from historyforgeai.application.services.image_api_budget import usage_summary
+                print(json.dumps(usage_summary(job_dir), indent=2))
             elif args.cutout_command == "approve":
                 print(approve_scene_assets(job_dir, args.scene))
             elif args.cutout_command == "reject":

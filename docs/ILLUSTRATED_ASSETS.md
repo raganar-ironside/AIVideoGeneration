@@ -14,7 +14,8 @@ previously approved animation.
 
 | Capability | Status |
 | --- | --- |
-| Generate a 2D character PNG from an OpenAI image model | Implemented; billed API |
+| Generate a 2D character PNG with Gemini Nano Banana | Implemented; default hosted provider, potentially billed API |
+| Use OpenAI image generation instead | Implemented; optional alternative |
 | Generate a background illustration candidate | Implemented; billed API; separately approved |
 | Import a manual transparent PNG | Implemented; free |
 | Remove an opaque image's background | Optional local rembg; downloads model weights on first use |
@@ -25,10 +26,17 @@ previously approved animation.
 | Preview, approve, reject, and edit keyframes in Streamlit | Implemented |
 | Detect changes to approved cutouts before rendering | Implemented |
 
-OpenAI API image generation is **separate from ChatGPT Plus or Google AI Pro**;
-it may incur charges. The project does not yet enforce a spending cap.
-Always use the `--allow-paid` flag or the Streamlit billing consent control
-before any API request.
+Gemini API billing is **separate from the Google AI Pro app subscription**.
+A Gemini API key is obtained from Google AI Studio; your project must have
+access to the selected image model. API requests may be billed, and promotional
+credits or quotas are managed by Google.
+
+The app now enforces an **estimated per-job image API budget** (default $1)
+and a maximum attempted image request count (default 8). This is **not a
+guaranteed financial cap**: actual Google/OpenAI charges can differ from
+the configurable estimate. Requests are counted before sending, including
+failed calls. Monitor actual provider billing separately. The `--allow-paid`
+flag or Streamlit consent is always required for hosted generation.
 
 ## 1. Prepare an existing storyboard
 
@@ -44,12 +52,19 @@ background candidate is **pending review**; it does not auto-approve.
 ## 2A. Automatic illustration generation
 
 ```bash
-# OPENAI_API_KEY must be configured in .env
+# Set GEMINI_API_KEY in .env (from https://aistudio.google.com/apikey).
+# Gemini is the default provider; use --provider openai for the alternative.
 historyforgeai cutouts prepare \
-  --job JOB_ID --scene 1 --provider openai \
+  --job JOB_ID --scene 1 --provider gemini \
   --mode whole --description "Chandragupta Maurya, royal Mauryan armour" \
-  --generate-background --allow-paid
+  --generate-background --remove-background \
+  --image-budget-usd 1.00 --allow-paid
 ```
+
+Gemini may return an **opaque** illustration even if prompted for transparency.
+The optional `--remove-background` flag uses local `rembg` to prepare the
+cutout. Install it with `python -m pip install -e '.[cutouts]'`. Without
+background removal, opaque character output is rejected for review.
 
 This generates one transparent character cutout and one illustrated
 background candidate. The character is given a simple animated drift/scale
@@ -59,9 +74,9 @@ preset, while the background is sent to the existing storyboard review.
 
 ```bash
 historyforgeai cutouts prepare \
-  --job JOB_ID --scene 1 --provider openai \
+  --job JOB_ID --scene 1 --provider gemini \
   --mode body-arm --description "Chandragupta Maurya in royal armour" \
-  --allow-paid
+  --remove-background --image-budget-usd 1.00 --allow-paid
 ```
 
 Without a character reference, this can make **three** billed image calls:
@@ -75,12 +90,45 @@ You can reuse an approved reference from the character registry:
 
 ```bash
 historyforgeai cutouts prepare --job JOB_ID --scene 1 \
-  --provider openai --mode body-arm \
-  --character-id chandragupta --allow-paid
+  --provider gemini --mode body-arm \
+  --character-id chandragupta --remove-background --allow-paid
 ```
 
 Or supply a reference image using `--source ~/Pictures/character.png`.
 This guides the image edit but does not guarantee identity preservation.
+
+### Budget and model configuration
+
+The defaults in `.env` are:
+
+```dotenv
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+IMAGE_JOB_BUDGET_USD=1.00
+IMAGE_JOB_MAX_REQUESTS=8
+GEMINI_IMAGE_ESTIMATED_USD=0.25
+OPENAI_IMAGE_ESTIMATED_USD=0.25
+```
+
+These dollar amounts are **editable estimates per attempted image request**,
+not official model prices. Model choice, token usage, resolution, and billing
+tier can change actual charges. If a model is unavailable, specify one
+supported by your AI Studio project with `--model`.
+
+View the ledger for a job:
+
+```bash
+historyforgeai cutouts budget --job JOB_ID
+```
+
+The budget preflight checks the number of planned image requests before
+starting (one for a whole character, two or three for body-arm, plus one
+for an optional background). It also checks each attempt immediately before
+the API call. A failed call remains counted. To raise the estimated guard,
+pass a higher `--image-budget-usd` explicitly. This does **not** configure
+a Google Cloud Billing budget or alert.
+
+To use OpenAI instead, set `OPENAI_API_KEY` and pass
+`--provider openai`. It uses the same approval and budget checks.
 
 ## 2B. Free/manual asset preparation
 
