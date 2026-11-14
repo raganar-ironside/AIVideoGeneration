@@ -53,6 +53,8 @@ def test_manual_whole_stages_without_changing_live_scene(job, tmp_path):
     assert not (job / "animation" / "approved" / "scene_01.json").exists()
     assert load(job / "storyboard.json").shots[0].status == "pending_review"
     assert load_asset_draft(job, 1).hashes == draft.hashes
+    with Image.open(job / "animation" / "drafts" / "scene_01" / "preview.png") as preview:
+        assert preview.size == (360, 640)
 
 
 def test_approve_creates_real_blender_spec_and_detects_tampering(job, tmp_path):
