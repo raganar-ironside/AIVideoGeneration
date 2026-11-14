@@ -49,6 +49,8 @@ def main():
     render_cmd.add_argument("--watermark", choices=["on", "off"], default="off", help="Show draft watermark (default: off)")
     render_cmd.add_argument("--scene-audio", action="store_true", help="Measure and align per-scene narration (implies --generate-audio)")
     render_cmd.add_argument("--motion", choices=["static", "zoom_in", "zoom_out"], default="zoom_in")
+    render_cmd.add_argument("--visual-style", choices=["cinematic", "blender-2d"], default="cinematic",
+                            help="Use FFmpeg stills or Blender animated 2D cutouts")
     images = sub.add_parser("image", help="Add a manual or hosted candidate image for storyboard review")
     images.add_argument("--job", required=True)
     images.add_argument("--scene", required=True, type=int)
@@ -126,11 +128,17 @@ def main():
         from historyforgeai.infrastructure.rendering.ffmpeg import FFmpegRenderer
         work = ROOT / "workspace"
         repo = FileJobRepository(work / "jobs")
-        renderer = FFmpegRenderer(config["width"], config["height"], config["fps"],
-                                  subtitles=args.subtitles == "on",
-                                  title_overlay=args.title_overlay == "on",
-                                  watermark=args.watermark == "on")
         try:
+            if args.visual_style == "blender-2d":
+                if any(value == "on" for value in (args.subtitles, args.title_overlay, args.watermark)):
+                    raise ValueError("Blender 2D does not yet support subtitle/title/watermark overlays")
+                from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
+                renderer = Blender2DRenderer(config["width"], config["height"], config["fps"])
+            else:
+                renderer = FFmpegRenderer(config["width"], config["height"], config["fps"],
+                                          subtitles=args.subtitles == "on",
+                                          title_overlay=args.title_overlay == "on",
+                                          watermark=args.watermark == "on")
             from historyforgeai.infrastructure.speech.factory import build_speech
             speech = build_speech() if (args.generate_audio or args.scene_audio) else None
             print(render_approved_job(args.job, work, repo, renderer, motion=args.motion,
