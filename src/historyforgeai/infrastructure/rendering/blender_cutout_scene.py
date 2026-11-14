@@ -32,7 +32,7 @@ def create_material(name, image):
     return material
 
 
-def create_layer(scene, layer, canvas_w, canvas_h, frames):
+def create_layer(scene, layer, canvas_w, canvas_h, frames, order):
     image = bpy.data.images.load(layer["asset"], check_existing=True)
     if not image.size[0] or not image.size[1]:
         raise ValueError("Empty image: " + layer["asset"])
@@ -65,7 +65,7 @@ def create_layer(scene, layer, canvas_w, canvas_h, frames):
     scene.collection.objects.link(anchor)
     plane.parent = anchor
     # Larger Z is closer to the orthographic camera; preserve declared layer order.
-    z = layer["z"] * 0.02
+    z = layer["z"] * 0.02 + order * 0.0001
     values = {"x": layer["x"], "y": layer["y"], "rotation_deg": 0.0, "scale": 1.0}
 
     def set_transform(frame):
@@ -124,8 +124,8 @@ def main():
     camera.data.type = "ORTHO"
     camera.data.ortho_scale = canvas_w
     scene.camera = camera
-    for layer in spec["layers"]:
-        create_layer(scene, layer, canvas_w, canvas_h, frames)
+    for order, layer in enumerate(spec["layers"]):
+        create_layer(scene, layer, canvas_w, canvas_h, frames, order)
 
     scene.render.image_settings.file_format = "FFMPEG"
     scene.render.image_settings.color_mode = "RGB"
