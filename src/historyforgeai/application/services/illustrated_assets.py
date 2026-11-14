@@ -492,6 +492,31 @@ def verify_approved_assets(job_dir: Path, scene_index: int) -> None:
     spec = job_dir / "animation" / f"scene_{scene_index:02d}.json"
     if not spec.is_file() or _hash(spec) != record["spec_sha256"]:
         raise ValueError(f"Scene {scene_index} cutout animation changed after approval")
+    if record.get("format") == "puppet-v3":
+        from historyforgeai.application.services.motion_library import motion_source_path
+        from historyforgeai.infrastructure.rendering.blender_2d import resolve_cutout_asset
+        for relative, digest in record["asset_sha256"].items():
+            # Only scene-local, approved character images may be hashed.
+            prefix = f"animation/assets/scene_{scene_index:02d}/characters/"
+            if not relative.startswith(prefix):
+                raise ValueError("Invalid approved v3 character asset path")
+            path = resolve_cutout_asset(job_dir, relative)
+            if _hash(path) != digest:
+                raise ValueError(f"Scene {scene_index} character asset changed after approval")
+        for name, digest in record.get("motion_sha256", {}).items():
+            path = motion_source_path(job_dir, name)
+            if path is None or _hash(path) != digest:
+                raise ValueError(f"Scene {scene_index} motion {name} changed after approval")
+        from historyforgeai.application.services.puppet_timeline import MultiCharacterScene
+        spec_v3 = MultiCharacterScene.model_validate_json(spec.read_text(encoding="utf-8"))
+        expected_assets = {p.asset for c in spec_v3.characters for p in c.parts}
+        if expected_assets != set(record["asset_sha256"]):
+            raise ValueError("Approved v3 character asset manifest does not match scene")
+        expected_motions = {a.motion for a in spec_v3.timeline
+                            if motion_source_path(job_dir, a.motion) is not None}
+        if expected_motions != set(record.get("motion_sha256", {})):
+            raise ValueError("Approved v3 motion manifest does not match scene")
+        return
     for name, digest in record["asset_sha256"].items():
         path = job_dir / "animation" / "assets" / f"scene_{scene_index:02d}" / f"{name}.png"
         if not path.is_file() or _hash(path) != digest:
