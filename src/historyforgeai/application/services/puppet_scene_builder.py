@@ -310,7 +310,7 @@ def preview_multi_scene(job: Path, scene: int, width: int = 360,
         left = round(x - part.pivot[0] * px_width)
         top = round(y - part.pivot[1] * px_height)
         overlay = Image.new("RGBA", (width, height))
-        overlay.paste(sprite, (left, top), sprite)
+        overlay.paste(sprite, (left, top))
         canvas = Image.alpha_composite(canvas, overlay)
     output = _draft_dir(job, scene) / "preview.png"
     canvas.convert("RGB").save(output)
