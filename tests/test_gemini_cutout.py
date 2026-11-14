@@ -87,7 +87,7 @@ def test_gemini_reference_guided_edit_sends_inline_image(monkeypatch, tmp_path):
     assert gemini_image("Keep the same armor", image, True, "gemini-2.5-flash-image") == _png()
     parts = calls[0]["contents"][0]["parts"]
     assert len(parts) == 2
-    assert base64.b64decode(parts[1]["inline_data"]["data"]).startswith(b"\\x89PNG".replace(b"\\x89", bytes([137])))
+    assert base64.b64decode(parts[1]["inline_data"]["data"]).startswith(bytes([137]) + b"PNG")
 
 
 def test_gemini_missing_key_fails_before_network(monkeypatch):
