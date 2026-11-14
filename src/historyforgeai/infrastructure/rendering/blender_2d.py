@@ -167,21 +167,39 @@ class Blender2DRenderer:
             clip = clips / f"scene_{index:02d}.mp4"
             staging = clips / f"scene_{index:02d}.partial.mp4"
             spec = clips / f"scene_{index:02d}.blender.json"
+            frames_dir = clips / f"scene_{index:02d}.frames"
             spec.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             staging.unlink(missing_ok=True)
+            if frames_dir.exists():
+                shutil.rmtree(frames_dir)
+            frames_dir.mkdir()
             try:
                 subprocess.run(
                     [blender, "-b", "--factory-startup", "--python", str(script),
-                     "--", str(spec), str(staging)],
+                     "--", str(spec), str(frames_dir)],
                     check=True, timeout=max(300, int(scene.duration_seconds * 50)),
                 )
+                if len(list(frames_dir.glob("frame_*.png"))) != payload["frames"]:
+                    raise RuntimeError(f"Blender produced an incomplete frame sequence for scene {index}")
+                # Blender 5 removed direct FFmpeg output; system FFmpeg works
+                # consistently across Blender versions and produces H.264 clips.
+                subprocess.run(
+                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                     "-framerate", str(self.fps), "-start_number", "1",
+                     "-i", str(frames_dir / "frame_%04d.png"),
+                     "-frames:v", str(payload["frames"]), "-c:v", "libx264",
+                     "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                     str(staging)],
+                    check=True, timeout=max(180, int(scene.duration_seconds * 10)),
+                )
                 if not staging.is_file() or staging.stat().st_size == 0:
-                    raise RuntimeError(f"Blender did not produce scene {index}")
+                    raise RuntimeError(f"FFmpeg did not encode scene {index}")
                 count = _frame_count(staging)
                 if count != payload["frames"]:
                     raise RuntimeError(f"Scene {index}: expected {payload['frames']} frames, got {count}")
                 staging.replace(clip)
             finally:
+                shutil.rmtree(frames_dir, ignore_errors=True)
                 staging.unlink(missing_ok=True)
             total_frames += payload["frames"]
             paths.append(clip)
