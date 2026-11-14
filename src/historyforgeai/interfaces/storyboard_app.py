@@ -243,6 +243,7 @@ st.caption('Optional: generate illustrated character layers, inspect them, then 
            'For reliable animation start with a single whole-character cutout.')
 from historyforgeai.application.services.illustrated_assets import (
     prepare_scene_assets, approve_scene_assets, reject_scene_assets, load_asset_draft,
+    update_approved_scene_spec,
 )
 cutout_scene = st.selectbox(
     'Scene for cutout preparation', [shot.scene_index for shot in board.shots],
@@ -351,9 +352,23 @@ if draft:
             if st.button('Reject these cutouts', key='cutout_reject'):
                 reject_scene_assets(job_dir, cutout_scene)
                 st.rerun()
-st.caption('For body-arm cutouts, the generated shoulder alignment and rotation pivot are '
-           'approximate. You can refine animation/scene_XX.json, then reapprove/regenerate '
-           'the draft before using the changed asset; no automatic skeletal rigging yet.')
+    if draft.status == 'approved':
+        approved_spec = job_dir / 'animation' / f'scene_{cutout_scene:02d}.json'
+        if approved_spec.is_file():
+            with st.expander('Adjust animation keyframes (advanced)'):
+                edited_spec = st.text_area(
+                    'Reviewed Blender animation JSON', value=approved_spec.read_text(encoding='utf-8'),
+                    height=280, key=f'cutout_spec_editor_{cutout_scene}',
+                )
+                if st.button('Save and reapprove keyframes', key=f'cutout_update_{cutout_scene}'):
+                    try:
+                        update_approved_scene_spec(job_dir, cutout_scene, edited_spec)
+                        st.success('Animation updated and reapproved; assets remain unchanged.')
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f'Animation update failed: {exc}')
+st.caption('AI body-arm generation is experimental: shoulder alignment and pivots are '
+           'approximate and may require edits. Automatic skeletal rigging is not implemented.')
 
 st.divider()
 st.subheader('Step 3 · Narration Studio')
