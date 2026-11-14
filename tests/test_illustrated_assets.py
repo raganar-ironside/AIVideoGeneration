@@ -86,7 +86,7 @@ def test_manual_body_arm_uses_two_separate_transparent_assets(job, tmp_path):
     draft = prepare_scene_assets(job, 1, mode="body-arm", source=body, arm_source=arm)
     assert set(draft.files) == {"body", "arm"}
     spec = PuppetRig.model_validate_json(approve_scene_assets(job, 1).read_text())
-    assert [layer.id for part in spec.parts] == ["character_body", "sword_arm"]
+    assert [part.id for part in spec.parts] == ["character_body", "sword_arm"]
     assert spec.parts[1].pivot == (0.18, 0.12)
     assert spec.parts[1].parent == "character_body"
     verify_approved_assets(job, 1)
