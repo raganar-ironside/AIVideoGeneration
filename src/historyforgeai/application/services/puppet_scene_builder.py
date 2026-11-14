@@ -88,6 +88,8 @@ def _ensure_draft(job: Path, scene: int) -> dict:
     if live.is_file():
         existing = json.loads(live.read_text(encoding="utf-8"))
         if existing.get("version") == 3:
+            from historyforgeai.application.services.illustrated_assets import verify_approved_assets
+            verify_approved_assets(job, scene)
             spec = MultiCharacterScene.model_validate(existing)
             for char in spec.characters:
                 target = _draft_dir(job, scene) / "characters" / char.id
