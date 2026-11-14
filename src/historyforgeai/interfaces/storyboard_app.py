@@ -20,7 +20,7 @@ if not job_dir or not (job_dir/'storyboard.json').exists():
 if st.session_state.get('_active_storyboard_job') != str(job_dir):
     for key in list(st.session_state):
         if key.startswith(('path', 'url', 'lic', 'attr', 'status', 'upload',
-                           'narration_', 'visual_', 'query_', 'cinematic_')):
+                           'narration_', 'visual_', 'query_', 'cinematic_', 'cutout_')):
             st.session_state.pop(key, None)
     st.session_state.pop('image_swap_from', None)
     st.session_state.pop('image_swap_to', None)
@@ -237,6 +237,125 @@ if st.button('Apply approved images to scene plan'):
     except Exception as exc: st.error(str(exc))
 
 st.divider()
+st.subheader('Step 2.5 · Illustrated character cutouts (Blender)')
+st.caption('Optional: generate illustrated character layers, inspect them, then approve. '
+           'Draft assets are never used in rendering until you approve them. '
+           'For reliable animation start with a single whole-character cutout.')
+from historyforgeai.application.services.illustrated_assets import (
+    prepare_scene_assets, approve_scene_assets, reject_scene_assets, load_asset_draft,
+)
+cutout_scene = st.selectbox(
+    'Scene for cutout preparation', [shot.scene_index for shot in board.shots],
+    key='cutout_scene',
+)
+cutout_shot = next(shot for shot in board.shots if shot.scene_index == cutout_scene)
+cutout_provider = st.selectbox('Illustration source', ['manual', 'openai'], key='cutout_provider')
+cutout_mode = st.selectbox(
+    'Animation asset type', ['whole', 'body-arm'], key='cutout_mode',
+    help='body-arm uses reference-guided AI edits and may need manual alignment corrections.',
+)
+cutout_character_id = st.selectbox(
+    'Approved character reference (optional)', [''] + cutout_shot.character_ids,
+    key='cutout_character_id',
+)
+cutout_description = st.text_input(
+    'Character appearance', value=', '.join(cutout_shot.character_ids),
+    key=f'cutout_description_{cutout_scene}',
+    help='Specify clothing, age, armour and illustration style to help consistency.',
+)
+cutout_upload = st.file_uploader(
+    'Character reference or manual whole/body PNG', type=['png', 'jpg', 'jpeg', 'webp'],
+    key=f'cutout_reference_{cutout_scene}',
+)
+cutout_arm_upload = (
+    st.file_uploader('Separate transparent arm PNG', type=['png', 'webp'],
+                     key=f'cutout_arm_{cutout_scene}')
+    if cutout_provider == 'manual' and cutout_mode == 'body-arm' else None
+)
+cutout_remove_bg = st.checkbox(
+    'Remove opaque image background locally (requires rembg; may download model weights)',
+    key='cutout_remove_bg',
+)
+cutout_generate_bg = st.checkbox(
+    'Also generate an illustrated background as a NEW pending-review storyboard image',
+    disabled=cutout_provider != 'openai', key='cutout_generate_bg',
+)
+cutout_paid = st.checkbox(
+    'I authorize potentially billed OpenAI image generation calls',
+    disabled=cutout_provider != 'openai', key='cutout_paid',
+)
+cutout_replace = st.checkbox('Replace an existing cutout draft', key='cutout_replace')
+draft = load_asset_draft(job_dir, cutout_scene)
+if st.button('Prepare cutout draft', disabled=cutout_provider == 'openai' and not cutout_paid):
+    try:
+        from io import BytesIO
+        from PIL import Image
+        uploads_dir = job_dir / 'animation' / 'uploads'
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        def save_cutout_upload(upload, name):
+            if upload is None:
+                return None
+            raw = upload.getvalue()
+            if not raw or len(raw) > 20 * 1024 * 1024:
+                raise ValueError('Character upload must be under 20 MB')
+            with Image.open(BytesIO(raw)) as image:
+                image.load()
+                path = uploads_dir / f'scene_{cutout_scene:02d}_{name}.png'
+                image.save(path, format='PNG')
+            return path
+
+        source_path = save_cutout_upload(cutout_upload, 'reference')
+        arm_path = save_cutout_upload(cutout_arm_upload, 'arm')
+        result = prepare_scene_assets(
+            job_dir, cutout_scene, provider=cutout_provider, mode=cutout_mode,
+            source=source_path, arm_source=arm_path,
+            character_id=cutout_character_id or None,
+            description=cutout_description, allow_paid=cutout_paid,
+            remove_background=cutout_remove_bg,
+            generate_background=cutout_generate_bg if cutout_provider == 'openai' else False,
+            replace_draft=cutout_replace,
+        )
+        st.session_state['cutout_feedback'] = f'Draft created for scene {result.scene_index}; review before approval.'
+        st.rerun()
+    except Exception as exc:
+        st.error(f'Cutout preparation failed: {exc}')
+feedback = st.session_state.pop('cutout_feedback', None)
+if feedback:
+    st.success(feedback)
+if draft:
+    st.markdown(f'**Scene {cutout_scene} cutout draft — {draft.status}**')
+    st.caption(draft.notes)
+    draft_dir = job_dir / 'animation' / 'drafts' / f'scene_{cutout_scene:02d}'
+    cols = st.columns(max(1, len(draft.files)))
+    for col, (name, filename) in zip(cols, draft.files.items()):
+        with col:
+            asset_path = draft_dir / filename
+            if asset_path.is_file():
+                st.image(str(asset_path), caption=name, width=220)
+    with st.expander('View generated prompts'):
+        st.json(draft.prompts)
+    if draft.background_candidate:
+        st.info('Background candidate is pending separate image approval in Step 2.')
+    if draft.status == 'pending_review':
+        left, right = st.columns(2)
+        with left:
+            if st.button('Approve these cutouts', type='primary', key='cutout_approve'):
+                try:
+                    spec_path = approve_scene_assets(job_dir, cutout_scene)
+                    st.session_state['cutout_feedback'] = f'Approved cutouts and created {spec_path.name}.'
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f'Approval failed: {exc}')
+        with right:
+            if st.button('Reject these cutouts', key='cutout_reject'):
+                reject_scene_assets(job_dir, cutout_scene)
+                st.rerun()
+st.caption('For body-arm cutouts, the generated shoulder alignment and rotation pivot are '
+           'approximate. You can refine animation/scene_XX.json, then reapprove/regenerate '
+           'the draft before using the changed asset; no automatic skeletal rigging yet.')
+
+st.divider()
 st.subheader('Step 3 · Narration Studio')
 st.caption('Preview audio before spending requests on a full render. Settings apply to this action only.')
 import os
@@ -324,13 +443,18 @@ if preview_path.is_file():
     st.audio(str(preview_path))
 
 st.caption('Full render overwrites short.mp4 and narration.wav. Back up existing files first.')
+visual_style = st.selectbox('Video rendering style', ['cinematic', 'blender-2d'],
+                            help='Blender 2D uses approved cutout layers, and requires Blender + FFmpeg installed.')
+if visual_style == 'blender-2d':
+    st.caption('Blender scenes without a cutout spec use their approved still-image background. '
+               'Approve cutout drafts in Step 2.5 before rendering.')
 confirm_render = st.checkbox('I verified that every numbered image matches its spoken narration and want to render')
 if st.button('Render with selected narration', disabled=not confirm_render):
     try:
         cmd = [
             sys.executable, '-m', 'historyforgeai.cli', 'render',
             '--job', job_dir.name, '--generate-audio', '--scene-audio',
-            '--motion', 'zoom_in',
+            '--motion', 'zoom_in', '--visual-style', visual_style,
         ]
         result = subprocess.run(cmd, env=narration_env(), capture_output=True, text=True, timeout=1200)
         if result.returncode:
