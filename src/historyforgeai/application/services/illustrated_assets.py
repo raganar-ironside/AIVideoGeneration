@@ -343,7 +343,7 @@ def create_draft_preview(job_dir: Path, scene_index: int, width: int = 360,
         y = round(first.get("y", layer["y"]) * height)
         surface = Image.new("RGBA", (width, height))
         surface.paste(sprite, (round(x - px_width * pivot[0]),
-                               round(y - px_height * pivot[1])), sprite)
+                               round(y - px_height * pivot[1])))
         rotation = first.get("rotation_deg", 0)
         if rotation:
             surface = surface.rotate(rotation, center=(x, y),
