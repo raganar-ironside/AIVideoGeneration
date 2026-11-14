@@ -220,11 +220,11 @@ def test_reviewed_keyframe_edit_updates_approval_without_changing_art(job, tmp_p
     prepare_scene_assets(job, 1, source=source)
     spec_path = approve_scene_assets(job, 1)
     spec = json.loads(spec_path.read_text())
-    spec["layers"][0]["keyframes"][-1]["x"] = 0.61
+    spec["parts"][0]["keyframes"][-1]["dx"] = 0.61
     update_approved_scene_spec(job, 1, json.dumps(spec))
     verify_approved_assets(job, 1)
-    assert json.loads(spec_path.read_text())["layers"][0]["keyframes"][-1]["x"] == 0.61
-    spec["layers"][0]["asset"] = "../outside.png"
+    assert json.loads(spec_path.read_text())["parts"][0]["keyframes"][-1]["dx"] == 0.61
+    spec["parts"][0]["asset"] = "../outside.png"
     with pytest.raises((ValueError, FileNotFoundError)):
         update_approved_scene_spec(job, 1, json.dumps(spec))
     verify_approved_assets(job, 1)
@@ -232,7 +232,7 @@ def test_reviewed_keyframe_edit_updates_approval_without_changing_art(job, tmp_p
 
 def test_keyframe_editor_requires_approved_assets(job):
     with pytest.raises(ValueError, match="Approve cutout"):
-        update_approved_scene_spec(job, 1, '{"layers": []}')
+        update_approved_scene_spec(job, 1, '{"version":2,"parts":[]}')
 
 
 def test_manual_twelve_part_puppet_requires_complete_named_pngs(job, tmp_path):
