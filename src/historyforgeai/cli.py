@@ -77,10 +77,12 @@ def main():
                       help="Also generate a pending-review illustrated scene background")
     prep.add_argument("--replace-draft", action="store_true",
                       help="Replace an existing draft without touching an approved scene")
-    for action in ("approve", "reject", "show"):
+    for action in ("approve", "reject", "show", "update-spec"):
         subcmd = cutsub.add_parser(action)
         subcmd.add_argument("--job", required=True)
         subcmd.add_argument("--scene", required=True, type=int)
+        if action == "update-spec":
+            subcmd.add_argument("--file", type=Path, required=True, help="Reviewed animation JSON")
     sub.add_parser("list", help="List jobs")
     sub.add_parser("topics", help="Show queued topics")
     args = parser.parse_args()
@@ -182,6 +184,7 @@ def main():
     elif args.command == "cutouts":
         from historyforgeai.application.services.illustrated_assets import (
             prepare_scene_assets, approve_scene_assets, reject_scene_assets, load_asset_draft,
+            update_approved_scene_spec,
         )
         try:
             if not args.job or not all(ch.isalnum() or ch in "-_" for ch in args.job):
@@ -205,6 +208,9 @@ def main():
             elif args.cutout_command == "reject":
                 reject_scene_assets(job_dir, args.scene)
                 print("Draft rejected")
+            elif args.cutout_command == "update-spec":
+                print(update_approved_scene_spec(job_dir, args.scene,
+                      args.file.read_text(encoding="utf-8")))
             else:
                 draft = load_asset_draft(job_dir, args.scene)
                 if draft is None:
