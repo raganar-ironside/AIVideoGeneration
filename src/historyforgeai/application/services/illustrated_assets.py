@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 import requests
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 
 from historyforgeai.application.services.storyboard import load
@@ -301,10 +301,57 @@ def prepare_scene_assets(
                 temp.unlink(missing_ok=True)
             draft.background_candidate = background_candidate
             (target / "manifest.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
+        create_draft_preview(job_dir, scene_index)
         return draft
     finally:
         if staging.exists():
             shutil.rmtree(staging)
+
+
+def create_draft_preview(job_dir: Path, scene_index: int, width: int = 360,
+                         height: int = 640) -> Path:
+    """Composite approximate first-frame cutouts for review without Blender."""
+    job_dir = Path(job_dir).resolve()
+    draft = load_asset_draft(job_dir, scene_index)
+    if draft is None:
+        raise FileNotFoundError("No cutout draft to preview")
+    if width <= 0 or height <= 0:
+        raise ValueError("Preview size must be positive")
+    board = load(job_dir / "storyboard.json")
+    shot = next((s for s in board.shots if s.scene_index == scene_index), None)
+    bg_path = Path(shot.candidate_image) if shot and shot.candidate_image else None
+    if bg_path and bg_path.is_file():
+        with Image.open(bg_path) as source:
+            background = ImageOps.fit(source.convert("RGBA"), (width, height),
+                                      method=Image.Resampling.LANCZOS)
+    else:
+        background = Image.new("RGBA", (width, height), (40, 51, 68, 255))
+    layers = sorted(_default_spec(scene_index, draft.mode)["layers"],
+                    key=lambda layer: layer["z"])
+    for layer in layers:
+        name = Path(layer["asset"]).stem
+        asset = _draft_dir(job_dir, scene_index) / draft.files[name]
+        with Image.open(asset) as source:
+            sprite = source.convert("RGBA")
+        first = layer.get("keyframes", [{}])[0]
+        scale = first.get("scale", 1.0)
+        px_width = max(1, round(width * layer["width"] * scale))
+        px_height = max(1, round(px_width * sprite.height / sprite.width))
+        sprite = sprite.resize((px_width, px_height), Image.Resampling.LANCZOS)
+        pivot = layer.get("pivot", [0.5, 0.5])
+        x = round(first.get("x", layer["x"]) * width)
+        y = round(first.get("y", layer["y"]) * height)
+        surface = Image.new("RGBA", (width, height))
+        surface.paste(sprite, (round(x - px_width * pivot[0]),
+                               round(y - px_height * pivot[1])), sprite)
+        rotation = first.get("rotation_deg", 0)
+        if rotation:
+            surface = surface.rotate(rotation, center=(x, y),
+                                     resample=Image.Resampling.BICUBIC)
+        background = Image.alpha_composite(background, surface)
+    output = _draft_dir(job_dir, scene_index) / "preview.png"
+    background.convert("RGB").save(output, "PNG")
+    return output
 
 
 def approve_scene_assets(job_dir: Path, scene_index: int) -> Path:
