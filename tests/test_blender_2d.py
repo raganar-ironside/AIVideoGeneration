@@ -149,3 +149,18 @@ def test_blender_mode_preserves_scene_frames_and_existing_output_contract(tmp_pa
     assert blender_2d._frame_count(job / "clips" / "scene_01.mp4") == 12
     assert blender_2d._frame_count(job / "clips" / "scene_02.mp4") == 12
     assert blender_2d._frame_count(Path(output)) == 24
+
+
+def test_demo_asset_generator_works_without_blender(tmp_path):
+    import sys
+    demo = Path(__file__).resolve().parents[1] / "scripts" / "blender_2d_demo.py"
+    job = tmp_path / "demo"
+    subprocess.run([sys.executable, str(demo), "--assets-only", "--output-dir", str(job)],
+                   check=True, timeout=30)
+    assert (job / "background.jpg").is_file()
+    assert (job / "animation" / "assets" / "chandragupta_body.png").is_file()
+    assert (job / "animation" / "assets" / "chandragupta_sword_arm.png").is_file()
+    spec = CutoutScene.model_validate_json((job / "animation" / "scene_01.json").read_text())
+    assert len(spec.layers) == 2
+    for layer in spec.layers:
+        assert resolve_cutout_asset(job, layer.asset).is_file()
