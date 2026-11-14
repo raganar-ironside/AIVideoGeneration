@@ -46,8 +46,8 @@ class MotionClip(BaseModel):
             for p in (poses[0], poses[-1]) if joint != "root" else (poses[0],):
                 if p.dx != 0 or p.dy != 0 or p.rotation_deg != 0 or p.scale != 1:
                     raise ValueError(f"Motion {self.name}: {joint} must start/end in neutral pose")
-            if joint == "root" and (poses[-1].rotation_deg != 0 or poses[-1].scale != 1):
-                raise ValueError("Root motion must finish without rotation or scale offset")
+            if joint == "root" and any(p.rotation_deg != 0 or p.scale != 1 for p in poses):
+                raise ValueError("Root track only supports dx/dy translation; animate the torso separately")
         return self
 
 
