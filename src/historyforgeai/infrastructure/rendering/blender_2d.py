@@ -141,15 +141,20 @@ class Blender2DRenderer:
             raise ValueError("Video dimensions and FPS must be positive")
         self.width, self.height, self.fps = width, height, fps
 
-    def render(self, plan: ShortPlan, job_dir: str, audio_path: str | None = None,
-               motion: str = "zoom_in") -> str:
-        blender = shutil.which("blender")
-        if not blender:
+    def validate(self, plan: ShortPlan, job_dir: Path) -> None:
+        """Fail before speech generation if Blender or any cutout asset is missing."""
+        if not shutil.which("blender"):
             raise RuntimeError("Blender is required for --visual-style blender-2d (install Blender 3.6+)")
         if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
             raise RuntimeError("ffmpeg and ffprobe are required for Blender rendering")
+        for scene in plan.scenes:
+            build_blender_scene(Path(job_dir), scene, self.width, self.height, self.fps)
+
+    def render(self, plan: ShortPlan, job_dir: str, audio_path: str | None = None,
+               motion: str = "zoom_in") -> str:
+        self.validate(plan, Path(job_dir))
+        blender = shutil.which("blender")
         job = Path(job_dir).resolve()
-        # Preflight every scene before touching existing clips or video.
         payloads = [build_blender_scene(job, scene, self.width, self.height, self.fps)
                     for scene in plan.scenes]
         clips = job / "clips"
