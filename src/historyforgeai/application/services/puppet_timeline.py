@@ -119,6 +119,24 @@ def compile_multi_character_scene(
             for cycle in range(action.repeat):
                 base_x, base_y = root_x, root_y
                 origin = action.start + cycle * segment
+                root_poses = clip.tracks.get("root")
+
+                def root_position(fraction):
+                    if not root_poses:
+                        return base_x, base_y
+                    for previous, following in zip(root_poses, root_poses[1:]):
+                        if fraction <= following.t:
+                            ratio = (fraction - previous.t) / (following.t - previous.t)
+                            dx = previous.dx + ratio * (following.dx - previous.dx)
+                            dy = previous.dy + ratio * (following.dy - previous.dy)
+                            return (
+                                base_x + dx * action.distance * action.direction / action.repeat,
+                                base_y + dy * action.intensity,
+                            )
+                    last = root_poses[-1]
+                    return (base_x + last.dx * action.distance * action.direction / action.repeat,
+                            base_y + last.dy * action.intensity)
+
                 for joint, poses in clip.tracks.items():
                     for pose in poses:
                         at = origin + pose.t * segment
@@ -137,10 +155,13 @@ def compile_multi_character_scene(
                             if joint not in root_ids:
                                 properties.update(dx=pose.dx * action.intensity,
                                                   dy=pose.dy * action.intensity)
-                            elif "root" not in clip.tracks:
-                                # A torso motion must not erase accumulated travel.
-                                properties.update(dx=base_x + pose.dx * action.intensity,
-                                                  dy=base_y + pose.dy * action.intensity)
+                            else:
+                                # When a torso track and root travel have different
+                                # sample times, interpolate the root position rather
+                                # than freezing travel at the previous root keyframe.
+                                x, y = root_position(pose.t)
+                                properties.update(dx=x + pose.dx * action.intensity,
+                                                  dy=y + pose.dy * action.intensity)
                             add(joint, at, properties, pose.easing)
                 if "root" in clip.tracks:
                     last = clip.tracks["root"][-1]
