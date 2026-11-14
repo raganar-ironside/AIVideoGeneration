@@ -328,6 +328,9 @@ if draft:
     st.markdown(f'**Scene {cutout_scene} cutout draft — {draft.status}**')
     st.caption(draft.notes)
     draft_dir = job_dir / 'animation' / 'drafts' / f'scene_{cutout_scene:02d}'
+    composite_preview = draft_dir / 'preview.png'
+    if composite_preview.is_file():
+        st.image(str(composite_preview), caption='Approximate first-frame composite (not a Blender render)', width=240)
     cols = st.columns(max(1, len(draft.files)))
     for col, (name, filename) in zip(cols, draft.files.items()):
         with col:
