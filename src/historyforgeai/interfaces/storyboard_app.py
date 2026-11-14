@@ -257,8 +257,8 @@ cutout_scene = st.selectbox(
 cutout_shot = next(shot for shot in board.shots if shot.scene_index == cutout_scene)
 cutout_provider = st.selectbox('Illustration source', ['gemini', 'openai', 'manual'], key='cutout_provider')
 cutout_mode = st.selectbox(
-    'Animation asset type', ['whole', 'body-arm'], key='cutout_mode',
-    help='body-arm uses reference-guided AI edits and may need manual alignment corrections.',
+    'Animation asset type', ['whole', 'body-arm', 'puppet'], key='cutout_mode',
+    help='puppet imports 12 named PNG parts (manual); body-arm uses experimental AI edits.',
 )
 cutout_character_id = st.selectbox(
     'Approved character reference (optional)', [''] + cutout_shot.character_ids,
@@ -272,7 +272,19 @@ cutout_description = st.text_input(
 cutout_upload = st.file_uploader(
     'Character reference or manual whole/body PNG', type=['png', 'jpg', 'jpeg', 'webp'],
     key=f'cutout_reference_{cutout_scene}',
+) if cutout_mode != 'puppet' else None
+cutout_puppet_uploads = (
+    st.file_uploader(
+        'Upload 12 transparent PNGs named torso.png, head.png, upper_arm_l.png, etc.',
+        type=['png'], accept_multiple_files=True,
+        key=f'cutout_puppet_parts_{cutout_scene}',
+    ) if cutout_mode == 'puppet' and cutout_provider == 'manual' else []
 )
+if cutout_mode == 'puppet':
+    from historyforgeai.application.services.puppet_templates import PUPPET_PARTS
+    st.caption('Required: ' + ', '.join(name + '.png' for name in PUPPET_PARTS))
+    if cutout_provider != 'manual':
+        st.warning('Full 12-part puppet generation is not automated yet. Select Manual and upload separated PNGs.')
 cutout_arm_upload = (
     st.file_uploader('Separate transparent arm PNG', type=['png', 'webp'],
                      key=f'cutout_arm_{cutout_scene}')
@@ -329,6 +341,26 @@ if st.button('Prepare cutout draft', disabled=cutout_provider != 'manual' and no
 
         source_path = save_cutout_upload(cutout_upload, 'reference')
         arm_path = save_cutout_upload(cutout_arm_upload, 'arm')
+        if cutout_mode == 'puppet':
+            if cutout_provider != 'manual':
+                raise ValueError('Full puppet mode requires Manual source until parts-sheet generation is implemented')
+            from historyforgeai.application.services.puppet_templates import PUPPET_PARTS
+            names = [Path(upload.name).name for upload in cutout_puppet_uploads]
+            required = {name + '.png' for name in PUPPET_PARTS}
+            if len(names) != len(required) or set(names) != required:
+                raise ValueError('Upload exactly the 12 required, uniquely named PNGs')
+            puppet_dir = uploads_dir / f'scene_{cutout_scene:02d}_puppet'
+            puppet_dir.mkdir(parents=True, exist_ok=True)
+            for upload in cutout_puppet_uploads:
+                raw = upload.getvalue()
+                if not raw or len(raw) > 20 * 1024 * 1024:
+                    raise ValueError('Each puppet PNG must be under 20 MB')
+                with Image.open(BytesIO(raw)) as image:
+                    image.load()
+                    if 'A' not in image.getbands() and 'transparency' not in image.info:
+                        raise ValueError(f'{upload.name} must have transparency')
+                    image.save(puppet_dir / Path(upload.name).name, format='PNG')
+            source_path = puppet_dir
         result = prepare_scene_assets(
             job_dir, cutout_scene, provider=cutout_provider, mode=cutout_mode,
             source=source_path, arm_source=arm_path,
@@ -353,9 +385,9 @@ if draft:
     composite_preview = draft_dir / 'preview.png'
     if composite_preview.is_file():
         st.image(str(composite_preview), caption='Approximate first-frame composite (not a Blender render)', width=240)
-    cols = st.columns(max(1, len(draft.files)))
-    for col, (name, filename) in zip(cols, draft.files.items()):
-        with col:
+    cols = st.columns(3 if len(draft.files) > 3 else max(1, len(draft.files)))
+    for i, (name, filename) in enumerate(draft.files.items()):
+        with cols[i % len(cols)]:
             asset_path = draft_dir / filename
             if asset_path.is_file():
                 st.image(str(asset_path), caption=name, width=220)
