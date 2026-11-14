@@ -62,7 +62,10 @@ def _openai_image(prompt: str, reference: Path | None, transparent: bool,
             response = requests.post(
                 "https://api.openai.com/v1/images/edits", headers=headers,
                 data=params,
-                files={"image": (Path(reference).name, handle, "image/png")},
+                files={"image": (Path(reference).name, handle,
+                                 "image/png" if Path(reference).suffix.lower() == ".png"
+                                 else "image/webp" if Path(reference).suffix.lower() == ".webp"
+                                 else "image/jpeg")},
                 timeout=300,
             )
     else:
@@ -338,6 +341,39 @@ def approve_scene_assets(job_dir: Path, scene_index: int) -> Path:
         json.dumps(record, indent=2), encoding="utf-8")
     draft.status = "approved"
     (draft_dir / "manifest.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
+    return spec_path
+
+
+def update_approved_scene_spec(job_dir: Path, scene_index: int, spec_text: str) -> Path:
+    """Explicitly review and reapprove changed transforms without replacing artwork.
+
+    Only existing, previously approved cutout assets may be referenced.
+    """
+    job_dir = Path(job_dir).resolve()
+    record_path = job_dir / "animation" / "approved" / f"scene_{scene_index:02d}.json"
+    if not record_path.is_file():
+        raise ValueError("Approve cutout assets before editing animation")
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    from historyforgeai.infrastructure.rendering.blender_2d import CutoutScene, resolve_cutout_asset
+    spec = CutoutScene.model_validate_json(spec_text)
+    expected_root = job_dir / "animation" / "assets" / f"scene_{scene_index:02d}"
+    allowed = {(expected_root / f"{name}.png").resolve() for name in record["asset_sha256"]}
+    for layer in spec.layers:
+        if resolve_cutout_asset(job_dir, layer.asset) not in allowed:
+            raise ValueError("Animation may only reference previously approved cutout assets")
+    for name, digest in record["asset_sha256"].items():
+        asset = expected_root / f"{name}.png"
+        if not asset.is_file() or _hash(asset) != digest:
+            raise ValueError("Approved cutout changed; prepare and approve a new draft")
+    spec_path = job_dir / "animation" / f"scene_{scene_index:02d}.json"
+    temp = spec_path.with_suffix(".partial.json")
+    try:
+        temp.write_text(json.dumps(spec.model_dump(), indent=2), encoding="utf-8")
+        temp.replace(spec_path)
+    finally:
+        temp.unlink(missing_ok=True)
+    record["spec_sha256"] = _hash(spec_path)
+    record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return spec_path
 
 
