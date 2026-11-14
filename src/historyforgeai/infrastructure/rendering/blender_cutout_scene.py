@@ -1,4 +1,4 @@
-"""Run ONLY under Blender: blender -b --python blender_cutout_scene.py -- SPEC OUTPUT.
+"""Run ONLY under Blender: blender -b --python blender_cutout_scene.py -- SPEC FRAME_DIR.
 
 The wrapper validates the JSON and asset paths. This script deliberately does
 not eval expressions or execute user-provided Python.
@@ -89,12 +89,12 @@ def create_layer(scene, layer, canvas_w, canvas_h, frames, order):
 
 def main():
     if "--" not in sys.argv:
-        raise SystemExit("Usage: blender -b --python SCRIPT -- SPEC OUTPUT")
+        raise SystemExit("Usage: blender -b --python SCRIPT -- SPEC FRAME_DIR")
     args = sys.argv[sys.argv.index("--") + 1:]
     if len(args) != 2:
-        raise SystemExit("Expected SPEC and OUTPUT arguments")
+        raise SystemExit("Expected SPEC and FRAME_DIR arguments")
     spec = json.loads(Path(args[0]).read_text(encoding="utf-8"))
-    output = Path(args[1]).resolve()
+    frame_dir = Path(args[1]).resolve()
     width, height = int(spec["width"]), int(spec["height"])
     fps, frames = int(spec["fps"]), int(spec["frames"])
     if min(width, height, fps, frames) <= 0:
@@ -131,14 +131,13 @@ def main():
     for order, layer in enumerate(spec["layers"]):
         create_layer(scene, layer, canvas_w, canvas_h, frames, order)
 
-    scene.render.image_settings.file_format = "FFMPEG"
+    # Blender 5 removed direct FFmpeg video output. Render PNG frames and
+    # let the host wrapper encode them with system FFmpeg (also works on 3.6+).
+    scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGB"
-    scene.render.ffmpeg.format = "MPEG4"
-    scene.render.ffmpeg.codec = "H264"
-    scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
-    scene.render.filepath = str(output)
-    scene.render.use_file_extension = False
-    output.parent.mkdir(parents=True, exist_ok=True)
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    scene.render.filepath = str(frame_dir / "frame_")
+    scene.render.use_file_extension = True
     bpy.ops.render.render(animation=True)
 
 
