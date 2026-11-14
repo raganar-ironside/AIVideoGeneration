@@ -21,6 +21,25 @@ ffprobe -version
 Install Blender from [blender.org](https://www.blender.org/download/) if it is
 not available in WSL/Linux. Ensure the `blender` executable is on `PATH`.
 
+## Try the 6-second prototype first
+
+Generate a self-contained **placeholder** Chandragupta/fortress cutout scene
+and render it using Blender:
+
+```bash
+python scripts/blender_2d_demo.py
+```
+
+Preview `workspace/blender_demo/short.mp4`. The demo draws a simple body,
+separate sword arm, and fortress background with Pillow, then animates the
+arm in Blender. It is deliberately **not production-quality historical art**.
+
+To inspect the generated PNGs and JSON without installing Blender yet:
+
+```bash
+python scripts/blender_2d_demo.py --assets-only
+```
+
 ## Prepare an approved job
 
 Create or import a Short as usual, approve its script and **all** storyboard
