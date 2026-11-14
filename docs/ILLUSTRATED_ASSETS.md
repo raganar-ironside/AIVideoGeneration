@@ -117,8 +117,9 @@ streamlit run src/historyforgeai/interfaces/storyboard_app.py -- workspace/jobs/
 ```
 
 Under **Step 2.5 · Illustrated character cutouts**, choose a scene, source
-and mode. Review the generated PNGs and prompts before clicking **Approve
-these cutouts**. You can reject drafts or replace them. For approved cutouts,
+and mode. Review the generated PNGs, approximate composite preview and prompts
+before clicking **Approve these cutouts**. The composite is a static first-frame
+preview, not a Blender-rendered animation. You can reject drafts or replace them. For approved cutouts,
 expand **Adjust animation keyframes** to edit positions, scales, pivot points
 and rotations, then explicitly reapprove.
 
