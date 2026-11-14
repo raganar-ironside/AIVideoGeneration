@@ -230,3 +230,30 @@ def test_invalid_v3_parent_and_character_reference():
             {"id": "hero", "parts": [{"id": "head", "asset": "head.png"}]}
         ], "timeline": [{"character": "other", "motion": "idle",
                          "start": 0, "duration": 1}]})
+
+
+def test_v3_scene_without_approval_is_rejected(job, tmp_path):
+    path, plan = job
+    stage_character(path, 1, "hero", puppet_art(tmp_path, "hero"))
+    draft = load_multi_draft(path, 1)
+    live = path / "animation" / "scene_01.json"
+    live.parent.mkdir(parents=True, exist_ok=True)
+    live.write_text(json.dumps(draft))
+    with pytest.raises(ValueError, match="explicitly approved"):
+        verify_approved_assets(path, 1)
+
+
+def test_real_demo_generates_two_approved_characters_without_blender(tmp_path):
+    import subprocess
+    import sys
+    demo = Path(__file__).resolve().parents[1] / "scripts" / "multi_character_demo.py"
+    output = tmp_path / "demo"
+    subprocess.run([sys.executable, str(demo), "--assets-only",
+                    "--output-dir", str(output), "--duration", "2"],
+                   check=True, timeout=40)
+    spec = MultiCharacterScene.model_validate_json(
+        (output / "animation" / "scene_01.json").read_text()
+    )
+    assert len(spec.characters) == 2
+    assert len(spec.timeline) == 3
+    verify_approved_assets(output, 1)
