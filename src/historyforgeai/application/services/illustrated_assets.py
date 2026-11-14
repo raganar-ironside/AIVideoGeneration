@@ -155,13 +155,13 @@ def _prompts(shot, description: str, mode: str) -> dict[str, str]:
                       "Vertical 9:16 composition. No characters, no text.",
     }
     if mode == "body-arm":
-        prompts["body"] = base + "Using the supplied character reference, return ONLY the full-body "
-            "character with their sword-holding arm removed, and naturally complete the clothing "
-            "underneath. Same costume and pose. Transparent background. No loose parts."
-        prompts["arm"] = base + "Using the supplied character reference, return ONLY the character's "
-            "detached sword-holding arm with its sleeve and sword, from shoulder to weapon tip. "
-            "Match costume and illustration style precisely. Transparent background. "
-            "Do not include a torso, head, other arm, or scenery."
+        prompts["body"] = (base + "Using the supplied character reference, return ONLY the full-body "
+                           "character with their sword-holding arm removed, and naturally complete the clothing "
+                           "underneath. Same costume and pose. Transparent background. No loose parts.")
+        prompts["arm"] = (base + "Using the supplied character reference, return ONLY the character's "
+                          "detached sword-holding arm with its sleeve and sword, from shoulder to weapon tip. "
+                          "Match costume and illustration style precisely. Transparent background. "
+                          "Do not include a torso, head, other arm, or scenery.")
     return prompts
 
 
