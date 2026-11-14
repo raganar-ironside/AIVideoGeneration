@@ -382,7 +382,7 @@ def create_draft_preview(job_dir: Path, scene_index: int, width: int = 360,
         asset = _draft_dir(job_dir, scene_index) / draft.files[name]
         with Image.open(asset) as source:
             sprite = source.convert("RGBA")
-        first = part.get("keyframes", [{}])[0]
+        first = (part.get("keyframes") or [{}])[0]
         scale = first.get("scale", 1.0)
         px_width = max(1, round(width * part["width"] * scale))
         px_height = max(1, round(px_width * sprite.height / sprite.width))
