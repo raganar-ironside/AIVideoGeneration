@@ -29,6 +29,9 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
         raise ValueError('Script is not approved or changed since approval; approve it in Streamlit first')
     apply_approved(plan_path, board_path)
     plan = ShortPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+    # Optional renderer preflight: reject missing cutout assets before paid/slow TTS.
+    if hasattr(renderer, "validate"):
+        renderer.validate(plan, folder)
     narration = folder / "narration.wav"
     if speech is not None:
         if scene_audio:
