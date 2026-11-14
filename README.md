@@ -17,7 +17,7 @@
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
-| Video | FFmpeg vertical MP4, static/zoom-in/zoom-out motion, optional music and crossfades | No generative AI video |
+| Video | FFmpeg vertical MP4, optional music/crossfades; optional Blender 2D cutout animation | Blender requires manually prepared transparent layers; no generative AI video |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
 **Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
@@ -136,6 +136,30 @@ audio-to-scene start times and total video frame count. Crossfades require
 `timeline.json` and `clips/scene_XX.mp4` from a `--scene-audio` render.
 Music-only finishing works without those files. The music is **user-supplied**;
 HistoryForgeAI does not fetch, generate, or license music automatically.
+
+### Blender 2D illustrated characters (optional)
+
+Blender mode animates **separate transparent character parts**, such as a
+commander's body and sword arm, using JSON keyframes. It runs headlessly
+on CPU and preserves the existing approved script, scene narration, clip
+format, and finishing workflow. Blender 3.6+ must be installed separately.
+
+1. Approve the script and background images for your job as usual.
+2. Add `animation/scene_XX.json` and transparent PNG/WebP cutout layers
+   inside the job, or reuse assets from `workspace/characters/`.
+3. Render with:
+
+```bash
+historyforgeai render --job JOB_ID --generate-audio --scene-audio --visual-style blender-2d
+```
+
+Output: `short.mp4`, `clips/scene_XX.mp4` and `timeline.json`.
+Scenes without animation specs use their approved still image as the
+background. Blender mode does not automatically create/rig artwork,
+and its cutout layers do not yet have a separate Streamlit approval step.
+
+See **[Blender 2D cutout guide](docs/BLENDER_2D.md)** for the layer
+format, reusable character assets, and a Chandragupta arm-raising example.
 
 ### Character references
 

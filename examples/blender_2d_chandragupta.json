@@ -1,0 +1,31 @@
+{
+  "layers": [
+    {
+      "id": "chandragupta_body",
+      "asset": "animation/assets/chandragupta_body.png",
+      "x": 0.5,
+      "y": 0.66,
+      "width": 0.55,
+      "pivot": [0.5, 0.5],
+      "z": 1,
+      "keyframes": [
+        {"t": 0, "scale": 1.0},
+        {"t": 1, "scale": 1.05}
+      ]
+    },
+    {
+      "id": "chandragupta_sword_arm",
+      "asset": "animation/assets/chandragupta_sword_arm.png",
+      "x": 0.63,
+      "y": 0.5,
+      "width": 0.2,
+      "pivot": [0.2, 0.12],
+      "z": 2,
+      "keyframes": [
+        {"t": 0, "rotation_deg": -45},
+        {"t": 0.35, "rotation_deg": 70},
+        {"t": 1, "rotation_deg": 70}
+      ]
+    }
+  ]
+}

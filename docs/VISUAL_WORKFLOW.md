@@ -22,6 +22,14 @@ Use `--scene-audio` to synthesize narration per scene and measure the actual spe
 
 `--motion zoom_in` uses FFmpeg zoompan; `--motion static` disables it. For historical material, image attribution and licences must be reviewed before publishing. AI reconstructions should be disclosed when realistic.
 
+## Blender 2D cutout characters
+
+Optional `--visual-style blender-2d` renders transparent character layers
+(body, arms, props) with independently animated transforms and pivot points.
+See [Blender 2D cutout guide](BLENDER_2D.md). These assets are user-supplied
+and require separate human inspection; the existing canonical reference
+image is not automatically segmented into a rig.
+
 ## Future milestones
 
 - Image search ranking based on visual relevance and source provenance
