@@ -1,7 +1,7 @@
-"""Blender-backed 2D cutout renderer for approved HistoryForgeAI storyboards.
+"""Blender-backed hierarchical 2D puppet renderer for approved HistoryForgeAI storyboards.
 
 The approved scene image remains the background. Optional animation/scene_XX.json
-files add reviewed, transparent PNG/WebP cutout layers. No arbitrary Blender
+files add reviewed, parented PNG/WebP puppet parts. No arbitrary Blender
 Python from the storyboard is executed.
 """
 import json
@@ -9,6 +9,7 @@ import math
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,53 +17,69 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from historyforgeai.domain.models import ShortPlan
 
 
-class CutoutKeyframe(BaseModel):
+class PuppetKeyframe(BaseModel):
+    """Offsets from bind pose; easing describes arrival at this keyframe."""
     model_config = ConfigDict(extra="forbid")
 
-    t: float = Field(ge=0, le=1)  # Fraction of measured scene duration
-    x: float | None = Field(default=None, ge=-1, le=2)
-    y: float | None = Field(default=None, ge=-1, le=2)
+    t: float = Field(ge=0, le=1)
+    dx: float | None = Field(default=None, ge=-2, le=2)
+    dy: float | None = Field(default=None, ge=-2, le=2)
     rotation_deg: float | None = Field(default=None, ge=-360, le=360)
     scale: float | None = Field(default=None, gt=0, le=10)
+    easing: Literal["linear", "hold", "ease_in", "ease_out", "ease_in_out", "back_out"] = "ease_in_out"
 
     @model_validator(mode="after")
     def has_change(self):
-        if all(getattr(self, field) is None for field in ("x", "y", "rotation_deg", "scale")):
-            raise ValueError("A keyframe must specify a position, rotation or scale")
+        if all(getattr(self, key) is None for key in ("dx", "dy", "rotation_deg", "scale")):
+            raise ValueError("A puppet keyframe must change an offset, rotation or scale")
         return self
 
 
-class CutoutLayer(BaseModel):
+class PuppetPart(BaseModel):
+    """One image and joint; bind x/y are normalized absolute canvas coordinates."""
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,48}$")
     asset: str = Field(min_length=1)
+    parent: str | None = None
     x: float = Field(default=0.5, ge=-1, le=2)
     y: float = Field(default=0.5, ge=-1, le=2)
     width: float = Field(default=0.5, gt=0, le=3)
-    pivot: tuple[float, float] = (0.5, 0.5)  # Image coordinates, top-left origin
+    pivot: tuple[float, float] = (0.5, 0.5)
     z: int = Field(default=1, ge=-99, le=99)
-    keyframes: list[CutoutKeyframe] = Field(default_factory=list, max_length=60)
+    keyframes: list[PuppetKeyframe] = Field(default_factory=list, max_length=60)
 
     @model_validator(mode="after")
-    def valid_animation(self):
+    def validate_part(self):
         if any(not 0 <= value <= 1 for value in self.pivot):
-            raise ValueError("Layer pivot must be within the image (0..1)")
+            raise ValueError("Part pivot must be within its image (0..1)")
         times = [keyframe.t for keyframe in self.keyframes]
         if times != sorted(set(times)):
             raise ValueError("Keyframes must have unique, increasing t values")
         return self
 
 
-class CutoutScene(BaseModel):
+class PuppetRig(BaseModel):
+    """Version 2 ONLY. The independent-layer format is intentionally unsupported."""
     model_config = ConfigDict(extra="forbid")
-    layers: list[CutoutLayer] = Field(default_factory=list, max_length=32)
+    version: Literal[2]
+    parts: list[PuppetPart] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
-    def unique_layers(self):
-        ids = [layer.id for layer in self.layers]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Cutout layer IDs must be unique")
+    def validate_hierarchy(self):
+        by_id = {part.id: part for part in self.parts}
+        if len(by_id) != len(self.parts):
+            raise ValueError("Puppet part IDs must be unique")
+        for part in self.parts:
+            if part.parent is not None and part.parent not in by_id:
+                raise ValueError(f"Unknown parent {part.parent!r} for {part.id!r}")
+            seen = {part.id}
+            parent = part.parent
+            while parent is not None:
+                if parent in seen:
+                    raise ValueError("Puppet joint hierarchy contains a cycle")
+                seen.add(parent)
+                parent = by_id[parent].parent
         return self
 
 
@@ -106,20 +123,17 @@ def build_blender_scene(job_dir: Path, scene, width: int, height: int, fps: int)
         raise ValueError(f"Unreadable approved background for scene {scene.index}") from exc
 
     spec_file = Path(job_dir) / "animation" / f"scene_{scene.index:02d}.json"
-    spec = CutoutScene.model_validate_json(spec_file.read_text(encoding="utf-8")) if spec_file.exists() else CutoutScene()
-    layers = [{
-        "id": "approved_background", "asset": str(background),
-        "x": 0.5, "y": 0.5, "pivot": [0.5, 0.5],
-        "width": 1.0, "fit": "cover", "z": -100, "keyframes": [],
-    }]
-    for layer in spec.layers:
-        data = layer.model_dump()
-        data["asset"] = str(resolve_cutout_asset(job_dir, layer.asset))
-        data["fit"] = "width"
-        layers.append(data)
+    rig = PuppetRig.model_validate_json(spec_file.read_text(encoding="utf-8")) if spec_file.exists() else PuppetRig(version=2)
+    parts = []
+    for part in rig.parts:
+        data = part.model_dump()
+        data["asset"] = str(resolve_cutout_asset(job_dir, part.asset))
+        parts.append(data)
     frames = max(1, round(scene.duration_seconds * fps))
-    return {"width": width, "height": height, "fps": fps, "frames": frames, "layers": layers}
-
+    return {
+        "version": 2, "width": width, "height": height, "fps": fps,
+        "frames": frames, "background": str(background), "parts": parts,
+    }
 
 def _frame_count(video: Path) -> int:
     result = subprocess.check_output(

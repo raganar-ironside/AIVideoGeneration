@@ -13,7 +13,7 @@ from historyforgeai.application.services.illustrated_assets import (
     reject_scene_assets, verify_approved_assets, update_approved_scene_spec,
 )
 from historyforgeai.application.services.storyboard import Shot, Storyboard, load, save
-from historyforgeai.infrastructure.rendering.blender_2d import CutoutScene, build_blender_scene
+from historyforgeai.infrastructure.rendering.blender_2d import PuppetRig, build_blender_scene
 from historyforgeai.domain.models import Scene
 
 
@@ -64,13 +64,14 @@ def test_approve_creates_real_blender_spec_and_detects_tampering(job, tmp_path):
     spec_path = approve_scene_assets(job, 1)
     assert spec_path.is_file()
     assert load_asset_draft(job, 1).status == "approved"
-    assert CutoutScene.model_validate_json(spec_path.read_text()).layers[0].id == "character"
+    assert PuppetRig.model_validate_json(spec_path.read_text()).parts[0].id == "character"
     verify_approved_assets(job, 1)
     scene = Scene(index=1, duration_seconds=4, narration="Test",
                   visual_description="Fort", asset_query="fort",
                   image_path=str(job / "fort.jpg"))
     payload = build_blender_scene(job, scene, 720, 1280, 24)
-    assert len(payload["layers"]) == 2
+    assert len(payload["parts"]) == 1
+    assert payload["version"] == 2
     assert payload["frames"] == 96
     spec_path.write_text(spec_path.read_text() + "\n")
     with pytest.raises(ValueError, match="changed after approval"):
@@ -84,9 +85,10 @@ def test_manual_body_arm_uses_two_separate_transparent_assets(job, tmp_path):
     arm.write_bytes(png())
     draft = prepare_scene_assets(job, 1, mode="body-arm", source=body, arm_source=arm)
     assert set(draft.files) == {"body", "arm"}
-    spec = CutoutScene.model_validate_json(approve_scene_assets(job, 1).read_text())
-    assert [layer.id for layer in spec.layers] == ["character_body", "sword_arm"]
-    assert spec.layers[1].pivot == (0.18, 0.12)
+    spec = PuppetRig.model_validate_json(approve_scene_assets(job, 1).read_text())
+    assert [part.id for part in spec.parts] == ["character_body", "sword_arm"]
+    assert spec.parts[1].pivot == (0.18, 0.12)
+    assert spec.parts[1].parent == "character_body"
     verify_approved_assets(job, 1)
     (job / "animation" / "assets" / "scene_01" / "arm.png").write_bytes(png(False))
     with pytest.raises(ValueError, match="changed after approval"):
@@ -218,11 +220,11 @@ def test_reviewed_keyframe_edit_updates_approval_without_changing_art(job, tmp_p
     prepare_scene_assets(job, 1, source=source)
     spec_path = approve_scene_assets(job, 1)
     spec = json.loads(spec_path.read_text())
-    spec["layers"][0]["keyframes"][-1]["x"] = 0.61
+    spec["parts"][0]["keyframes"][-1]["dx"] = 0.61
     update_approved_scene_spec(job, 1, json.dumps(spec))
     verify_approved_assets(job, 1)
-    assert json.loads(spec_path.read_text())["layers"][0]["keyframes"][-1]["x"] == 0.61
-    spec["layers"][0]["asset"] = "../outside.png"
+    assert json.loads(spec_path.read_text())["parts"][0]["keyframes"][-1]["dx"] == 0.61
+    spec["parts"][0]["asset"] = "../outside.png"
     with pytest.raises((ValueError, FileNotFoundError)):
         update_approved_scene_spec(job, 1, json.dumps(spec))
     verify_approved_assets(job, 1)
@@ -230,4 +232,29 @@ def test_reviewed_keyframe_edit_updates_approval_without_changing_art(job, tmp_p
 
 def test_keyframe_editor_requires_approved_assets(job):
     with pytest.raises(ValueError, match="Approve cutout"):
-        update_approved_scene_spec(job, 1, '{"layers": []}')
+        update_approved_scene_spec(job, 1, '{"version":2,"parts":[]}')
+
+
+def test_manual_twelve_part_puppet_requires_complete_named_pngs(job, tmp_path):
+    from historyforgeai.application.services.puppet_templates import PUPPET_PARTS
+    folder = tmp_path / "puppet"
+    folder.mkdir()
+    for name in PUPPET_PARTS[:-1]:
+        (folder / f"{name}.png").write_bytes(png())
+    with pytest.raises(ValueError, match="Invalid or oversized"):
+        prepare_scene_assets(job, 1, provider="manual", mode="puppet", source=folder)
+    assert load_asset_draft(job, 1) is None
+    (folder / f"{PUPPET_PARTS[-1]}.png").write_bytes(png())
+    draft = prepare_scene_assets(job, 1, provider="manual", mode="puppet", source=folder)
+    assert len(draft.files) == 12
+    spec_path = approve_scene_assets(job, 1)
+    rig = PuppetRig.model_validate_json(spec_path.read_text())
+    assert len(rig.parts) == 12
+    assert rig.version == 2
+    assert next(p for p in rig.parts if p.id == "weapon").parent == "forearm_r"
+    verify_approved_assets(job, 1)
+
+
+def test_ai_cannot_claim_to_generate_full_puppet_without_parts_sheet(job):
+    with pytest.raises(ValueError, match="manually prepared PNG directory"):
+        prepare_scene_assets(job, 1, provider="gemini", mode="puppet", allow_paid=True)

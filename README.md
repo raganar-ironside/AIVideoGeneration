@@ -17,7 +17,7 @@
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
-| Video | FFmpeg vertical MP4, optional music/crossfades; Blender 2D cutout animation | Blender needs transparent layers; automatic skeletal rigging is not implemented |
+| Video | FFmpeg vertical MP4, optional music/crossfades; Blender v2 hierarchical 2D puppet animation | 12-part rig supports parenting/easing; art separation and joint alignment are manual |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
 **Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
@@ -141,10 +141,11 @@ HistoryForgeAI does not fetch, generate, or license music automatically.
 
 HistoryForgeAI can now generate **reviewable** illustrated characters and
 background candidates using **Gemini Nano Banana (default)** or OpenAI, or import manual artwork and optionally remove
-backgrounds locally. Choose a whole-character animation or experimental
-AI-assisted separate body/sword-arm layers. **Every cutout draft requires
+backgrounds locally. Choose a single-part puppet or experimental
+AI-assisted body/sword-arm pair, or import a complete 12-part puppet.
+**Every cutout draft requires
 explicit approval before Blender uses it.** Generated body parts may need
-alignment corrections; this is not automatic skeletal rigging.
+alignment corrections; full 12-part AI separation is not yet implemented.
 
 ```bash
 # Gemini API: potentially billed; explicit consent required
@@ -153,9 +154,9 @@ historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider gemini \
   --mode whole --generate-background --remove-background \
   --image-budget-usd 1.00 --allow-paid
 
-# Free alternative: use a transparent character image
+# Full 12-part puppet (manual separated PNGs, see docs/BLENDER_2D.md)
 historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider manual \
-  --mode whole --source ~/Pictures/character.png
+  --mode puppet --source ~/Pictures/puppet_parts
 
 # Inspect, then approve
 historyforgeai cutouts show --job JOB_ID --scene 1
@@ -172,13 +173,14 @@ or OpenAI billing charges. Check usage with
 
 ### Blender 2D illustrated characters (optional)
 
-Blender mode animates **separate transparent character parts**, such as a
-commander's body and sword arm, using JSON keyframes. It runs headlessly
+Blender mode animates **hierarchically parented transparent character parts**
+with configurable joints and easing. The old independent-layer JSON format
+has been removed; all rigs now use version 2. It runs headlessly
 on CPU and preserves the existing approved script, scene narration, clip
 format, and finishing workflow. Blender 3.6+ must be installed separately.
 
 1. Approve the script and background images for your job as usual.
-2. Add `animation/scene_XX.json` and transparent PNG/WebP cutout layers
+2. Add a v2 `animation/scene_XX.json` and transparent PNG/WebP puppet parts
    inside the job, or reuse assets from `workspace/characters/`.
 3. Render with:
 
@@ -188,10 +190,11 @@ historyforgeai render --job JOB_ID --generate-audio --scene-audio --visual-style
 
 Output: `short.mp4`, `clips/scene_XX.mp4` and `timeline.json`.
 Scenes without animation specs use their approved still image as the
-background. Blender mode does not automatically rig artwork,
-and its cutout layers do not yet have a separate Streamlit approval step.
+background. A full 12-part puppet can be uploaded and approved in Streamlit
+Step 2.5. The rig template defines parent-child joints, but you must
+manually prepare separate part images and align the joint pivots.
 
-See **[Blender 2D cutout guide](docs/BLENDER_2D.md)** for the layer
+See **[Blender 2D puppet rig v2 guide](docs/BLENDER_2D.md)** for the rig
 format, reusable character assets, and a Chandragupta arm-raising example.
 
 ### Character references

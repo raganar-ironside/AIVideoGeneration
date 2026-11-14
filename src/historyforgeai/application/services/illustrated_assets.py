@@ -29,7 +29,7 @@ STYLE = (
 class AssetDraft(BaseModel):
     scene_index: int = Field(ge=1)
     status: Literal["pending_review", "approved", "rejected"] = "pending_review"
-    mode: Literal["whole", "body-arm"]
+    mode: Literal["whole", "body-arm", "puppet"]
     provider: Literal["manual", "gemini", "openai"]
     model: str | None = None
     character_id: str | None = None
@@ -166,28 +166,43 @@ def _prompts(shot, description: str, mode: str) -> dict[str, str]:
 
 
 def _default_spec(scene_index: int, mode: str) -> dict:
+    """All prepared assets publish the new puppet-rig v2 format, never layers."""
     root = f"animation/assets/scene_{scene_index:02d}"
+    if mode == "puppet":
+        from historyforgeai.application.services.puppet_templates import puppet_template
+        return puppet_template(scene_index)
     if mode == "whole":
-        return {"layers": [{
+        return {"version": 2, "parts": [{
             "id": "character", "asset": f"{root}/whole.png",
             "x": 0.5, "y": 0.64, "width": 0.62, "pivot": [0.5, 0.5], "z": 1,
-            "keyframes": [{"t": 0, "x": 0.47, "scale": 1},
-                          {"t": 1, "x": 0.53, "scale": 1.04}],
+            "keyframes": [
+                {"t": 0, "dx": -0.03, "scale": 1, "easing": "linear"},
+                {"t": 1, "dx": 0.03, "scale": 1.04, "easing": "ease_in_out"},
+            ],
         }]}
-    return {"layers": [
-        {
-            "id": "character_body", "asset": f"{root}/body.png",
-            "x": 0.5, "y": 0.64, "width": 0.62, "z": 1,
-            "keyframes": [{"t": 0, "scale": 1}, {"t": 1, "scale": 1.03}],
-        },
-        {
-            "id": "sword_arm", "asset": f"{root}/arm.png",
-            "x": 0.62, "y": 0.5, "width": 0.24, "pivot": [0.18, 0.12], "z": 2,
-            "keyframes": [{"t": 0, "rotation_deg": -35},
-                          {"t": 0.45, "rotation_deg": 65},
-                          {"t": 1, "rotation_deg": 65}],
-        },
-    ]}
+    if mode == "body-arm":
+        return {"version": 2, "parts": [
+            {
+                "id": "character_body", "asset": f"{root}/body.png",
+                "x": 0.5, "y": 0.64, "width": 0.62, "z": 1,
+                "keyframes": [
+                    {"t": 0, "scale": 1, "easing": "linear"},
+                    {"t": 1, "scale": 1.03, "easing": "ease_in_out"},
+                ],
+            },
+            {
+                "id": "sword_arm", "asset": f"{root}/arm.png",
+                "parent": "character_body",
+                "x": 0.62, "y": 0.5, "width": 0.24,
+                "pivot": [0.18, 0.12], "z": 2,
+                "keyframes": [
+                    {"t": 0, "rotation_deg": -35, "easing": "linear"},
+                    {"t": 0.45, "rotation_deg": 65, "easing": "back_out"},
+                    {"t": 1, "rotation_deg": 65, "easing": "hold"},
+                ],
+            },
+        ]}
+    raise ValueError(f"Unknown puppet asset mode: {mode}")
 
 
 def _draft_dir(job_dir: Path, scene_index: int) -> Path:
@@ -202,7 +217,7 @@ def load_asset_draft(job_dir: Path, scene_index: int) -> AssetDraft | None:
 def prepare_scene_assets(
     job_dir: Path, scene_index: int, *,
     provider: Literal["manual", "gemini", "openai"] = "manual",
-    mode: Literal["whole", "body-arm"] = "whole",
+    mode: Literal["whole", "body-arm", "puppet"] = "whole",
     source: Path | None = None,
     arm_source: Path | None = None,
     character_id: str | None = None,
@@ -221,10 +236,12 @@ def prepare_scene_assets(
     Their geometry may be inconsistent; review alignment before approving.
     """
     job_dir = Path(job_dir).resolve()
-    if provider not in ("manual", "gemini", "openai") or mode not in ("whole", "body-arm"):
+    if provider not in ("manual", "gemini", "openai") or mode not in ("whole", "body-arm", "puppet"):
         raise ValueError("Unsupported provider or cutout mode")
     if not isinstance(scene_index, int) or scene_index < 1:
         raise ValueError("Scene index must be positive")
+    if mode == "puppet" and provider != "manual":
+        raise ValueError("12-part puppet import currently requires a manually prepared PNG directory; AI parts-sheet separation is not implemented")
     if provider in ("gemini", "openai") and not allow_paid:
         raise ValueError("Hosted image generation requires explicit --allow-paid")
     if generate_background and (provider == "manual" or not allow_paid):
@@ -238,7 +255,7 @@ def prepare_scene_assets(
     target = _draft_dir(job_dir, scene_index)
     if target.exists() and not replace_draft:
         raise FileExistsError("Draft exists; approve/reject it or pass --replace-draft to regenerate")
-    reference = _reference_for_character(job_dir, character_id, source)
+    reference = None if mode == "puppet" else _reference_for_character(job_dir, character_id, source)
     prompts = _prompts(shot, description, mode)
     from historyforgeai.application.services.image_api_budget import (
         preflight_image_budget, reserve_image_request,
@@ -273,7 +290,14 @@ def prepare_scene_assets(
     background_candidate = None
     try:
         if provider == "manual":
-            items = {"whole": reference} if mode == "whole" else {"body": reference, "arm": arm_source}
+            if mode == "puppet":
+                from historyforgeai.application.services.puppet_templates import PUPPET_PARTS
+                folder = Path(source).expanduser().resolve()
+                if not folder.is_dir():
+                    raise ValueError("Puppet mode needs --source DIRECTORY containing 12 transparent PNGs")
+                items = {name: folder / f"{name}.png" for name in PUPPET_PARTS}
+            else:
+                items = {"whole": reference} if mode == "whole" else {"body": reference, "arm": arm_source}
             for name, path in items.items():
                 path = Path(path).expanduser().resolve()
                 if not path.is_file() or path.stat().st_size > 20 * 1024 * 1024:
@@ -306,9 +330,10 @@ def prepare_scene_assets(
         draft = AssetDraft(
             scene_index=scene_index, mode=mode, provider=provider, model=model,
             character_id=character_id, prompts=prompts, files=files, hashes=hashes,
-            notes=("Experimental AI part separation: verify anatomy, layer alignment, and pivot. "
-                   "The generated arm is not automatically rigged." if mode == "body-arm" else
-                   "Whole-character animation: no independent joints."),
+            notes=("12-part puppet imported; review each joint, overlap and pivot in the rig JSON. "
+                   "No automatic joint detection or hidden-area reconstruction." if mode == "puppet" else
+                   "Experimental AI part separation: align arm/shoulder before approval." if mode == "body-arm" else
+                   "Single-part puppet: no independently moving joints."),
         )
         (staging / "manifest.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
         if target.exists():
@@ -350,21 +375,21 @@ def create_draft_preview(job_dir: Path, scene_index: int, width: int = 360,
                                       method=Image.Resampling.LANCZOS)
     else:
         background = Image.new("RGBA", (width, height), (40, 51, 68, 255))
-    layers = sorted(_default_spec(scene_index, draft.mode)["layers"],
-                    key=lambda layer: layer["z"])
-    for layer in layers:
-        name = Path(layer["asset"]).stem
+    parts = sorted(_default_spec(scene_index, draft.mode)["parts"],
+                   key=lambda part: part["z"])
+    for part in parts:
+        name = Path(part["asset"]).stem
         asset = _draft_dir(job_dir, scene_index) / draft.files[name]
         with Image.open(asset) as source:
             sprite = source.convert("RGBA")
-        first = layer.get("keyframes", [{}])[0]
+        first = (part.get("keyframes") or [{}])[0]
         scale = first.get("scale", 1.0)
-        px_width = max(1, round(width * layer["width"] * scale))
+        px_width = max(1, round(width * part["width"] * scale))
         px_height = max(1, round(px_width * sprite.height / sprite.width))
         sprite = sprite.resize((px_width, px_height), Image.Resampling.LANCZOS)
-        pivot = layer.get("pivot", [0.5, 0.5])
-        x = round(first.get("x", layer["x"]) * width)
-        y = round(first.get("y", layer["y"]) * height)
+        pivot = part.get("pivot", [0.5, 0.5])
+        x = round((part["x"] + first.get("dx", 0)) * width)
+        y = round((part["y"] + first.get("dy", 0)) * height)
         surface = Image.new("RGBA", (width, height))
         surface.paste(sprite, (round(x - px_width * pivot[0]),
                                round(y - px_height * pivot[1])))
@@ -393,9 +418,9 @@ def approve_scene_assets(job_dir: Path, scene_index: int) -> Path:
         if _hash(source) != draft.hashes.get(name):
             raise ValueError("Draft asset changed after preparation; regenerate it")
         _transparent_png(source.read_bytes(), remove_background=False)
-    from historyforgeai.infrastructure.rendering.blender_2d import CutoutScene
+    from historyforgeai.infrastructure.rendering.blender_2d import PuppetRig
     spec = _default_spec(scene_index, draft.mode)
-    CutoutScene.model_validate(spec)
+    PuppetRig.model_validate(spec)
     assets = job_dir / "animation" / "assets" / f"scene_{scene_index:02d}"
     assets.mkdir(parents=True, exist_ok=True)
     for name, filename in draft.files.items():
@@ -425,12 +450,12 @@ def update_approved_scene_spec(job_dir: Path, scene_index: int, spec_text: str) 
     if not record_path.is_file():
         raise ValueError("Approve cutout assets before editing animation")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    from historyforgeai.infrastructure.rendering.blender_2d import CutoutScene, resolve_cutout_asset
-    spec = CutoutScene.model_validate_json(spec_text)
+    from historyforgeai.infrastructure.rendering.blender_2d import PuppetRig, resolve_cutout_asset
+    spec = PuppetRig.model_validate_json(spec_text)
     expected_root = job_dir / "animation" / "assets" / f"scene_{scene_index:02d}"
     allowed = {(expected_root / f"{name}.png").resolve() for name in record["asset_sha256"]}
-    for layer in spec.layers:
-        if resolve_cutout_asset(job_dir, layer.asset) not in allowed:
+    for part in spec.parts:
+        if resolve_cutout_asset(job_dir, part.asset) not in allowed:
             raise ValueError("Animation may only reference previously approved cutout assets")
     for name, digest in record["asset_sha256"].items():
         asset = expected_root / f"{name}.png"

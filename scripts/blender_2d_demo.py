@@ -1,4 +1,4 @@
-"""Generate an illustrated placeholder cutout scene to smoke-test Blender mode.
+"""Generate a twelve-part parented puppet demo to smoke-test Blender mode.
 
 This is intentionally simple demo art, NOT a historical reconstruction.
 Usage: python scripts/blender_2d_demo.py [--assets-only]
@@ -14,7 +14,7 @@ from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
 
 
 def create_demo_assets(job: Path) -> None:
-    assets = job / "animation" / "assets"
+    assets = job / "animation" / "assets" / "scene_01"
     assets.mkdir(parents=True, exist_ok=True)
 
     # Fortress background; an approved scene image would replace this in real jobs.
@@ -30,48 +30,39 @@ def create_demo_assets(job: Path) -> None:
     draw.rectangle((115, 450, 245, 580), fill="#4c352d")
     background.save(job / "background.jpg")
 
-    # Transparent body and head.
-    body = Image.new("RGBA", (260, 450), (0, 0, 0, 0))
-    d = ImageDraw.Draw(body)
-    d.polygon([(95, 290), (125, 420), (140, 420), (145, 290)], fill="#62412d")
-    d.polygon([(150, 290), (160, 420), (180, 420), (175, 290)], fill="#62412d")
-    d.polygon([(80, 135), (190, 135), (215, 320), (60, 320)], fill="#a23c32", outline="#4b2c2a")
-    d.polygon([(75, 137), (130, 185), (190, 137)], fill="#d5a356")
-    d.ellipse((102, 45, 171, 135), fill="#ba7950", outline="#603d2e", width=4)
-    d.polygon([(88, 65), (130, 18), (188, 65), (175, 85), (92, 85)], fill="#c99a45", outline="#63422c")
-    d.line([(115, 102), (155, 102)], fill="#55352c", width=4)
-    body.save(assets / "chandragupta_body.png")
-
-    # Separate sword arm, with its pivot near the shoulder in the top-left.
-    arm = Image.new("RGBA", (190, 260), (0, 0, 0, 0))
-    d = ImageDraw.Draw(arm)
-    d.line([(28, 32), (65, 105), (105, 165)], fill="#b77d51", width=29)
-    d.ellipse((88, 145, 120, 175), fill="#b77d51")
-    d.line([(105, 160), (155, 230)], fill="#c4c8d0", width=11)
-    d.polygon([(155, 230), (169, 249), (158, 220)], fill="#e0e3e8")
-    d.line([(85, 175), (123, 153)], fill="#644a2b", width=9)
-    arm.save(assets / "chandragupta_sword_arm.png")
+    # Create twelve intentionally simple independent art pieces. Their joints
+    # are connected by the v2 Blender rig, not by image-editing tricks.
+    from historyforgeai.application.services.puppet_templates import (
+        PUPPET_PARTS, puppet_template,
+    )
+    for name in PUPPET_PARTS:
+        size = (120, 340) if name == "weapon" else (180, 220)
+        img = Image.new("RGBA", size, (0, 0, 0, 0))
+        painter = ImageDraw.Draw(img)
+        if name == "torso":
+            painter.polygon([(36, 50), (145, 50), (170, 188), (18, 188)],
+                            fill="#a23c32", outline="#4b2c2a")
+            painter.polygon([(40, 60), (90, 120), (140, 60)], fill="#d5a356")
+        elif name == "head":
+            painter.ellipse((40, 20, 140, 170), fill="#ba7950", outline="#603d2e", width=5)
+            painter.polygon([(26, 58), (90, 0), (154, 58)], fill="#c99a45")
+            painter.line([(65, 113), (115, 113)], fill="#55352c", width=4)
+        elif name == "pelvis":
+            painter.polygon([(24, 20), (156, 20), (140, 155), (42, 155)],
+                            fill="#a23c32", outline="#4b2c2a")
+        elif name.startswith(("upper_arm", "forearm")):
+            painter.line([(88, 22), (95, 195)], fill="#bd875c", width=46)
+            painter.ellipse((65, 5, 110, 50), fill="#bd875c")
+        elif name.startswith(("thigh", "shin")):
+            painter.line([(90, 15), (90, 200)], fill="#62412d", width=54)
+        elif name == "weapon":
+            painter.line([(34, 305), (84, 30)], fill="#c4c8d0", width=14)
+            painter.polygon([(84, 30), (102, 3), (91, 53)], fill="#e0e3e8")
+            painter.line([(8, 270), (73, 284)], fill="#644a2b", width=13)
+        img.save(assets / f"{name}.png")
 
     animation = job / "animation" / "scene_01.json"
-    animation.write_text(json.dumps({
-        "layers": [
-            {
-                "id": "body", "asset": "animation/assets/chandragupta_body.png",
-                "x": 0.5, "y": 0.65, "width": 0.55, "z": 1,
-                "keyframes": [{"t": 0, "scale": 1}, {"t": 1, "scale": 1.03}],
-            },
-            {
-                "id": "sword_arm", "asset": "animation/assets/chandragupta_sword_arm.png",
-                "x": 0.59, "y": 0.53, "width": 0.24,
-                "pivot": [0.15, 0.12], "z": 2,
-                "keyframes": [
-                    {"t": 0, "rotation_deg": -40},
-                    {"t": 0.45, "rotation_deg": 65},
-                    {"t": 1, "rotation_deg": 65},
-                ],
-            },
-        ]
-    }, indent=2), encoding="utf-8")
+    animation.write_text(json.dumps(puppet_template(1), indent=2), encoding="utf-8")
 
 
 def main():

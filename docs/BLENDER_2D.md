@@ -1,166 +1,155 @@
-# Blender 2D cutout animation (MVP)
+# Blender 2D hierarchical puppet rig (v2)
 
-HistoryForgeAI can render **real, independently moving 2D illustration layers**
-with Blender. The existing FFmpeg renderer remains the default. The Blender
-mode does **not** generate artwork, separate body parts, or auto-rig characters:
-you supply transparent PNG/WebP layers, such as a body and sword arm, and
-animate their position, rotation and scale with keyframes.
+The **old independent-layer animation schema has been removed**. Every
+`animation/scene_XX.json` must use `{"version": 2, "parts": [...]}`.
+The FFmpeg still-image renderer, approved storyboard, Hindi TTS, music and
+finishing workflow remain unchanged.
 
-## Automatic asset preparation
+## What is implemented
 
-You can now generate cutout drafts using the OpenAI image API, import a
-manual character PNG, or use optional local background removal. Drafts are
-previewed and explicitly approved in Streamlit **Step 2.5** before Blender
-uses them. Separate body/arm generation is experimental and may require
-manual alignment; there is no automatic skeletal rigging.
+- **Real Blender parent-child joint hierarchy**: moving the torso carries
+  attached head, arms and pelvis; rotating the upper arm carries its forearm
+  and weapon. Parenting uses joint pivots and bind-pose offsets.
+- **Twelve-part puppet template** with torso, head, two upper arms, two
+  forearms, pelvis, two thighs, two shins and weapon.
+- **Explicit easing** on keyframe transitions: `linear`, `hold`,
+  `ease_in`, `ease_out`, `ease_in_out`, `back_out`.
+- **Manually separated multi-part PNG import** through CLI or Streamlit
+  Step 2.5, with asset previews, SHA-256 approval and editable/reapprovable
+  rig JSON.
+- **Gemini/OpenAI illustration generation** still supports a single-part
+  image or experimental body+arm pair. Both publish v2 puppet specs; the
+  body+arm pair now has real parenting.
 
-See [Illustrated asset preparation](ILLUSTRATED_ASSETS.md) for commands,
-review workflow, costs, and limitations.
+**Not implemented:** AI parts-sheet separation, automatic detection of
+joint positions, reconstruction of covered anatomy, inverse kinematics,
+automatic walk cycles, visual drag-and-drop rig editor, narration-driven
+motion planning, or automatic effects. The 12-part bind template is an
+approximate starting pose, not guaranteed alignment for any illustration.
 
-## Install
+## Quick 12-part demo
 
-Blender 3.6+ is recommended, along with FFmpeg and FFprobe. The renderer
-uses **Cycles on CPU**, so it can run headlessly without a dedicated GPU.
-It may render much more slowly than the FFmpeg still-image mode.
-
-```bash
-blender --version
-ffmpeg -version
-ffprobe -version
-```
-
-Install Blender from [blender.org](https://www.blender.org/download/) if it is
-not available in WSL/Linux. Ensure the `blender` executable is on `PATH`.
-
-## Try the 6-second prototype first
-
-Generate a self-contained **placeholder** Chandragupta/fortress cutout scene
-and render it using Blender:
+Install Blender 3.6+ and FFmpeg/FFprobe, then:
 
 ```bash
 python scripts/blender_2d_demo.py
 ```
 
-Preview `workspace/blender_demo/short.mp4`. The demo draws a simple body,
-separate sword arm, and fortress background with Pillow, then animates the
-arm in Blender. It is deliberately **not production-quality historical art**.
+This creates twelve simple placeholder transparent PNGs and a v2 rig,
+animates a sword-raising motion with head/torso/arm parenting, and writes
+`workspace/blender_demo/short.mp4`. The demo art is not production quality.
 
-To inspect the generated PNGs and JSON without installing Blender yet:
+To inspect the rig without rendering:
 
 ```bash
 python scripts/blender_2d_demo.py --assets-only
+cat workspace/blender_demo/animation/scene_01.json
 ```
 
-## Prepare an approved job
+## Prepare your own full puppet
 
-Create or import a Short as usual, approve its script and **all** storyboard
-images, and use an approved clean background illustration for each scene.
-
-For a job named `JOB_ID`:
+Create a directory containing exactly these named transparent PNGs:
 
 ```text
-workspace/jobs/JOB_ID/
-  scene_plan.json
-  storyboard.json
-  animation/
-    scene_01.json
-    assets/
-      chandragupta_body.png
-      chandragupta_sword_arm.png
+puppet_parts/
+  torso.png
+  head.png
+  upper_arm_l.png
+  forearm_l.png
+  upper_arm_r.png
+  forearm_r.png
+  pelvis.png
+  thigh_l.png
+  shin_l.png
+  thigh_r.png
+  shin_r.png
+  weapon.png
 ```
 
-Each approved storyboard image is used as the **background** of its scene.
-If no `animation/scene_XX.json` exists, that scene is rendered with just
-its approved background. This allows mixed animated and static scenes.
+Each image must contain **only its intended part**, with transparent
+background and enough hidden overlap painted in to rotate without gaps.
+You can create these assets manually or with external art tools. **The app
+does not yet automatically cut a generated character into these pieces.**
 
-An example animation spec is in
-[`examples/blender_2d_chandragupta.json`](../examples/blender_2d_chandragupta.json).
-Copy it to `workspace/jobs/JOB_ID/animation/scene_01.json` and supply the
-two referenced transparent assets.
+```bash
+historyforgeai cutouts prepare --job JOB_ID --scene 1 \
+  --provider manual --mode puppet --source ~/Pictures/puppet_parts
+historyforgeai cutouts show --job JOB_ID --scene 1
+historyforgeai cutouts approve --job JOB_ID --scene 1
+```
 
-### Spec format
+In Streamlit Step 2.5, choose **Manual → puppet** and upload the 12 named
+PNGs. Inspect the composite, approve, then edit the rig JSON and explicitly
+reapprove the updated joints/animations. The static composite preview is
+approximate and does not calculate animated parent transforms.
+
+### v2 spec format
 
 ```json
 {
-  "layers": [
+  "version": 2,
+  "parts": [
     {
-      "id": "commander_body",
-      "asset": "animation/assets/chandragupta_body.png",
-      "x": 0.5,
-      "y": 0.66,
-      "width": 0.55,
-      "pivot": [0.5, 0.5],
-      "z": 1
+      "id": "torso",
+      "asset": "animation/assets/scene_01/torso.png",
+      "parent": null,
+      "x": 0.50, "y": 0.53, "width": 0.35,
+      "pivot": [0.50, 0.35], "z": 3,
+      "keyframes": [
+        {"t": 0, "rotation_deg": 0, "easing": "linear"},
+        {"t": 1, "rotation_deg": -5, "easing": "ease_in_out"}
+      ]
     },
     {
-      "id": "sword_arm",
-      "asset": "animation/assets/chandragupta_sword_arm.png",
-      "x": 0.62,
-      "y": 0.50,
-      "width": 0.2,
-      "pivot": [0.2, 0.12],
-      "z": 2,
+      "id": "upper_arm_r",
+      "asset": "animation/assets/scene_01/upper_arm_r.png",
+      "parent": "torso",
+      "x": 0.62, "y": 0.47, "width": 0.16,
+      "pivot": [0.35, 0.10], "z": 5,
       "keyframes": [
-        {"t": 0, "rotation_deg": -45},
-        {"t": 0.35, "rotation_deg": 70},
-        {"t": 1, "rotation_deg": 70}
+        {"t": 0, "rotation_deg": 0, "easing": "linear"},
+        {"t": 0.55, "rotation_deg": 65, "easing": "back_out"}
       ]
     }
   ]
 }
 ```
 
-- `x` and `y`: normalized position of the layer's **pivot** in the
-  video, with `(0, 0)` at the **top left** and `(1, 1)` at bottom right.
-- `width`: rendered image width as a fraction of the video width.
-  The image's aspect ratio is preserved.
-- `pivot`: the rotation anchor inside the asset, as fractions measured
-  from its top-left corner. Put the arm's pivot at the shoulder.
-- `z`: draw order; larger values are in front. Ties preserve list order.
-- `keyframes[].t`: fraction of the **actual, measured scene duration**
-  from 0 to 1, not fixed seconds. This keeps motion aligned if TTS changes.
-- `rotation_deg`: counterclockwise rotation around the pivot.
-  Keyframes can also set `x`, `y`, or `scale`; unspecified properties
-  retain their previous value.
-- Layers are composited with transparent backgrounds. The cutout artwork
-  **must** have transparency; a white rectangular background is not usable.
+- `parent`: another part ID, or `null` for a root. Parents must exist;
+  cycles and duplicate IDs are rejected. Multiple independent root puppets
+  are permitted for multi-character scenes.
+- `x`, `y`: bind-pose joint position as a fraction of the whole video
+  canvas, with `(0,0)` at top left.
+- `pivot`: joint location within the individual PNG, measured from its
+  top-left corner. `[0.5,0.5]` means the image center.
+- `width`: rendered image width as a fraction of the canvas width.
+- `z`: drawing order; larger is closer to camera.
+- `keyframes[].t`: fraction of measured scene duration (0 to 1).
+- `rotation_deg` and `scale`: local joint rotation and scale relative
+  to its parent.
+- `dx`, `dy`: optional offsets **from the bind pose**, in canvas-width
+  and canvas-height fractions, interpreted in the parent's local axes.
+- `easing`: controls the interpolation **into** that keyframe. `hold`
+  means the previous value holds until the destination frame.
 
-**Reusable assets:** Prefix `asset` with `library:` to reference files
-under `workspace/`. Example:
-`"library:characters/chandragupta/sword_arm.png"`.
-Job-local paths resolve relative to `workspace/jobs/JOB_ID/`.
-Paths escaping their permitted roots, including symlink escapes, are rejected.
+The renderer validates all asset paths, PNG transparency and hierarchy
+before launching Blender. A reviewed scene can use up to 32 parts.
 
-## Render the video
+## Render an approved job
 
 ```bash
 historyforgeai render --job JOB_ID \
-  --generate-audio --scene-audio \
-  --visual-style blender-2d
+  --generate-audio --scene-audio --visual-style blender-2d
 ```
 
-Output remains `workspace/jobs/JOB_ID/short.mp4`, with scene clips in
-`clips/scene_XX.mp4` and narration timing in `timeline.json`.
-The existing cinematic finishing step can then add music and crossfades
-without changing the narration.
+The approved storyboard image is the background. Output remains
+`workspace/jobs/JOB_ID/short.mp4`, with clips and narration timeline in
+the same paths as before. Blender uses headless CPU Cycles (2 samples)
+and FFmpeg H.264 encoding. Rendering can be slow on WSL/CPU; try a
+4–6-second scene before a complete Short.
 
-The existing `--motion` setting does not control Blender layers: use the
-JSON keyframes instead. The Blender MVP does not yet support the FFmpeg
-renderer-specific `--subtitles on`, `--title-overlay on`, or
-`--watermark on` flags. The existing script/image approvals are still
-required; **cutout layers are not individually approved in Streamlit yet**.
-Review the assets, licensing and final output yourself before publishing.
-
-## Operational notes
-
-- All cutout assets and animation specs are validated before narration
-  synthesis; Blender is invoked with fixed script arguments, not with
-  arbitrary user Python.
-- Video is rendered at the existing configured resolution and FPS.
-  Every scene's frame count is verified before clips are concatenated.
-- This is **2D cutout animation**, not automatic lip-sync, hand-drawn
-  in-betweening, full-body IK, or generated 3D animation.
-- Blender rendering uses CPU and can be resource-intensive. Test a short
-  4–6 second scene before rendering an entire Short. For Cloud Run Jobs,
-  include Blender in the container image and configure sufficient CPU,
-  memory and task timeout. Cloud deployment is a separate feature.
+**Security/review:** AI images may incur API charges. The estimated
+image-request budget is not a real provider billing cap. Rig specs are
+validated JSON, not arbitrary Python. Approved cutout assets/specs are
+hash-checked before rendering. Generated art and historical claims
+require human review.
