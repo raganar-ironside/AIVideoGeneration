@@ -10,7 +10,7 @@ from PIL import Image
 
 from historyforgeai.application.services.illustrated_assets import (
     _openai_image, approve_scene_assets, load_asset_draft, prepare_scene_assets,
-    reject_scene_assets, verify_approved_assets,
+    reject_scene_assets, verify_approved_assets, update_approved_scene_spec,
 )
 from historyforgeai.application.services.storyboard import Shot, Storyboard, load, save
 from historyforgeai.infrastructure.rendering.blender_2d import CutoutScene, build_blender_scene
@@ -208,3 +208,24 @@ def test_openai_reference_edit_uses_multipart(monkeypatch, tmp_path):
     assert calls[0][0].endswith("/images/edits")
     assert "image" in calls[0][1]["files"]
     assert calls[0][1]["data"]["background"] == "transparent"
+
+
+def test_reviewed_keyframe_edit_updates_approval_without_changing_art(job, tmp_path):
+    source = tmp_path / "hero.png"
+    source.write_bytes(png())
+    prepare_scene_assets(job, 1, source=source)
+    spec_path = approve_scene_assets(job, 1)
+    spec = json.loads(spec_path.read_text())
+    spec["layers"][0]["keyframes"][-1]["x"] = 0.61
+    update_approved_scene_spec(job, 1, json.dumps(spec))
+    verify_approved_assets(job, 1)
+    assert json.loads(spec_path.read_text())["layers"][0]["keyframes"][-1]["x"] == 0.61
+    spec["layers"][0]["asset"] = "../outside.png"
+    with pytest.raises((ValueError, FileNotFoundError)):
+        update_approved_scene_spec(job, 1, json.dumps(spec))
+    verify_approved_assets(job, 1)
+
+
+def test_keyframe_editor_requires_approved_assets(job):
+    with pytest.raises(ValueError, match="Approve cutout"):
+        update_approved_scene_spec(job, 1, '{"layers": []}')
