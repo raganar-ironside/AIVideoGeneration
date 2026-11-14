@@ -17,7 +17,7 @@
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
-| Video | FFmpeg vertical MP4, optional music/crossfades; optional Blender 2D cutout animation | Blender requires manually prepared transparent layers; no generative AI video |
+| Video | FFmpeg vertical MP4, optional music/crossfades; Blender 2D cutout animation | Blender needs transparent layers; automatic skeletal rigging is not implemented |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
 **Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
@@ -137,6 +137,34 @@ audio-to-scene start times and total video frame count. Crossfades require
 Music-only finishing works without those files. The music is **user-supplied**;
 HistoryForgeAI does not fetch, generate, or license music automatically.
 
+### Automated illustration and cutout preparation (optional)
+
+HistoryForgeAI can now generate **reviewable** illustrated characters and
+background candidates, or import manual artwork and optionally remove
+backgrounds locally. Choose a whole-character animation or experimental
+AI-assisted separate body/sword-arm layers. **Every cutout draft requires
+explicit approval before Blender uses it.** Generated body parts may need
+alignment corrections; this is not automatic skeletal rigging.
+
+```bash
+# OpenAI image API: separately billed, explicit consent required
+historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider openai \
+  --mode whole --generate-background --allow-paid
+
+# Free alternative: use a transparent character image
+historyforgeai cutouts prepare --job JOB_ID --scene 1 --provider manual \
+  --mode whole --source ~/Pictures/character.png
+
+# Inspect, then approve
+historyforgeai cutouts show --job JOB_ID --scene 1
+historyforgeai cutouts approve --job JOB_ID --scene 1
+```
+
+You can also prepare, preview, approve/reject, and edit keyframes from
+**Step 2.5** of the Streamlit reviewer. Backgrounds still need separate
+storyboard image approval. For details, see
+**[Illustrated asset preparation](docs/ILLUSTRATED_ASSETS.md)**.
+
 ### Blender 2D illustrated characters (optional)
 
 Blender mode animates **separate transparent character parts**, such as a
@@ -155,7 +183,7 @@ historyforgeai render --job JOB_ID --generate-audio --scene-audio --visual-style
 
 Output: `short.mp4`, `clips/scene_XX.mp4` and `timeline.json`.
 Scenes without animation specs use their approved still image as the
-background. Blender mode does not automatically create/rig artwork,
+background. Blender mode does not automatically rig artwork,
 and its cutout layers do not yet have a separate Streamlit approval step.
 
 See **[Blender 2D cutout guide](docs/BLENDER_2D.md)** for the layer
