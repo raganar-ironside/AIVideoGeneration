@@ -132,14 +132,12 @@ def test_blender_mode_preserves_scene_frames_and_existing_output_contract(tmp_pa
     def fake_blender(cmd, **kwargs):
         if cmd[0] == "/fake/blender":
             payload = json.loads(Path(cmd[-2]).read_text(encoding="utf-8"))
-            return real_run(
-                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                 "-f", "lavfi", "-i",
-                 f"color=c=blue:s={payload['width']}x{payload['height']}:r={payload['fps']}",
-                 "-frames:v", str(payload["frames"]), "-c:v", "libx264",
-                 "-preset", "ultrafast", "-pix_fmt", "yuv420p", cmd[-1]],
-                check=True, timeout=30,
-            )
+            frame_dir = Path(cmd[-1])
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            for frame in range(1, payload["frames"] + 1):
+                Image.new("RGB", (payload["width"], payload["height"]), "blue").save(
+                    frame_dir / f"frame_{frame:04d}.png")
+            return subprocess.CompletedProcess(cmd, 0)
         return real_run(cmd, **kwargs)
 
     monkeypatch.setattr(blender_2d.subprocess, "run", fake_blender)
