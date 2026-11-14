@@ -257,3 +257,29 @@ def test_real_demo_generates_two_approved_characters_without_blender(tmp_path):
     assert len(spec.characters) == 2
     assert len(spec.timeline) == 3
     verify_approved_assets(output, 1)
+
+
+def test_root_motion_interpolates_when_torso_has_intermediate_keyframes(job, tmp_path):
+    path, _ = job
+    stage_character(path, 1, "hero", puppet_art(tmp_path, "hero"))
+    custom = path / "motions"
+    custom.mkdir()
+    (custom / "advance.json").write_text(json.dumps({
+        "name": "advance",
+        "tracks": {
+            "root": [{"t": 0, "dx": 0}, {"t": 1, "dx": 1}],
+            "torso": [
+                {"t": 0, "rotation_deg": 0},
+                {"t": .5, "rotation_deg": 20},
+                {"t": 1, "rotation_deg": 0},
+            ],
+        },
+    }))
+    add_motion_action(path, 1, character="hero", motion="advance",
+                      start=0, duration=2, distance=.4)
+    spec = MultiCharacterScene.model_validate(load_multi_draft(path, 1))
+    torso = next(p for p in compile_multi_character_scene(spec, path, 6)
+                 if p["id"] == "hero__torso")
+    middle = next(k for k in torso["keyframes"] if abs(k["t"] - 1/6) < 1e-7)
+    assert middle["dx"] == pytest.approx(.2)
+    assert middle["rotation_deg"] == pytest.approx(20)
