@@ -164,6 +164,38 @@ def remove_character(job: Path, scene: int, character_id: str) -> Path:
     return path
 
 
+
+def update_character_joints(job: Path, scene: int, character_id: str,
+                            rows: list[dict]) -> Path:
+    """Update draft bind positions, pivots and parent IDs without replacing art."""
+    draft = _ensure_draft(job, scene)
+    match = next((c for c in draft["characters"] if c["id"] == character_id), None)
+    if match is None:
+        raise ValueError(f"Unknown character {character_id!r}")
+    if len(rows) != len(match["parts"]):
+        raise ValueError("Every joint must be supplied exactly once")
+    existing = {p["id"]: p for p in match["parts"]}
+    if {row.get("id") for row in rows} != set(existing):
+        raise ValueError("Joint IDs cannot be added or removed in the rig editor")
+    updated_parts = []
+    for row in rows:
+        part = dict(existing[row["id"]])
+        part.update({
+            "parent": str(row.get("parent") or "").strip() or None,
+            "x": float(row["x"]), "y": float(row["y"]),
+            "width": float(row["width"]), "z": int(row["z"]),
+            "pivot": [float(row["pivot_x"]), float(row["pivot_y"])],
+        })
+        updated_parts.append(part)
+    updated = dict(draft)
+    updated["characters"] = [
+        {**char, "parts": updated_parts} if char["id"] == character_id else char
+        for char in draft["characters"]
+    ]
+    spec = MultiCharacterScene.model_validate(updated)
+    compile_multi_character_scene(spec, job, _scene_duration(job, scene))
+    return _save_draft(job, scene, updated)
+
 def add_motion_action(job: Path, scene: int, *, character: str, motion: str,
                       start: float, duration: float, repeat: int = 1,
                       intensity: float = 1, direction: int = 1,
