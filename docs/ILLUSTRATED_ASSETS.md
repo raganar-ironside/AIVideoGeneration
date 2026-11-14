@@ -18,10 +18,12 @@ previously approved animation.
 | Use OpenAI image generation instead | Implemented; optional alternative |
 | Generate a background illustration candidate | Implemented; billed API; separately approved |
 | Import a manual transparent PNG | Implemented; free |
+| Import a 12-part hierarchical puppet | Implemented; manually prepared PNGs; approved rig v2 |
 | Remove an opaque image's background | Optional local rembg; downloads model weights on first use |
 | Generate a separate body and sword arm from the same reference | Experimental reference-guided AI edits; requires human visual review |
 | Auto-detect shoulder joints / reconstruct hidden anatomy | **Not implemented** |
-| Auto-rig a full skeleton / generate natural walking cycles | **Not implemented** |
+| Parent joints into a reusable 12-part rig template | Implemented; joints need manual alignment |
+| Auto-detect joint positions / generate natural walking cycles | **Not implemented** |
 | Auto-plan arbitrary motion from Hindi narration | **Not implemented**; default keyframe presets |
 | Preview, approve, reject, and edit keyframes in Streamlit | Implemented |
 | Detect changes to approved cutouts before rendering | Implemented |
@@ -130,7 +132,37 @@ a Google Cloud Billing budget or alert.
 To use OpenAI instead, set `OPENAI_API_KEY` and pass
 `--provider openai`. It uses the same approval and budget checks.
 
-## 2B. Free/manual asset preparation
+## 2B. Full 12-part puppet (new animation architecture)
+
+The independent-layer Blender format has been **removed**. All approved
+animation specs now use `{"version":2,"parts":[...]}` with parent-child
+joints and explicit easing. The `whole` and `body-arm` options
+still exist as limited **asset inputs** to the new rig engine; only
+the 12-part mode allows head, shoulders, elbows, pelvis and legs to
+move separately.
+
+For a full rig, prepare **12 separate transparent PNGs** named
+`torso.png`, `head.png`, `upper_arm_l.png`, `forearm_l.png`,
+`upper_arm_r.png`, `forearm_r.png`, `pelvis.png`, `thigh_l.png`,
+`shin_l.png`, `thigh_r.png`, `shin_r.png`, and `weapon.png`.
+
+```bash
+historyforgeai cutouts prepare --job JOB_ID --scene 1 \
+  --provider manual --mode puppet --source ~/Pictures/puppet_parts
+historyforgeai cutouts show --job JOB_ID --scene 1
+historyforgeai cutouts approve --job JOB_ID --scene 1
+```
+
+Or select **Manual → puppet** in Streamlit Step 2.5 and upload all
+12 named files. The template's joint locations are estimates: inspect
+and edit `animation/scene_01.json`, then explicitly reapprove the spec.
+The static composite preview does not simulate parent-joint rotations.
+
+**Gemini does not yet generate a complete 12-part puppet or parts sheet
+automatically.** That requires a separate parts-generation workflow and
+joint-alignment work. See [Blender puppet rig v2](BLENDER_2D.md).
+
+## 2C. Other manual asset preparation
 
 ```bash
 # Already-transparent full-body PNG
@@ -194,7 +226,8 @@ workspace/jobs/JOB_ID/
     approved/scene_01.json
 ```
 
-For body-arm, the asset files are `body.png` and `arm.png`.
+For body-arm, the asset files are `body.png` and `arm.png`. For full puppets,
+all 12 named PNGs are stored under the same scene asset folder.
 The approval record contains SHA-256 hashes; rendering fails if an approved
 spec or PNG is changed without explicit reapproval.
 
@@ -208,15 +241,17 @@ historyforgeai render --job JOB_ID \
   --generate-audio --scene-audio --visual-style blender-2d
 ```
 
-Blender animates the approved layers and FFmpeg assembles them with
+Blender animates the approved parented puppet parts and FFmpeg assembles them with
 scene-aligned narration. Output is `workspace/jobs/JOB_ID/short.mp4`.
 You can use the existing cinematic finishing step for music and transitions.
 
 ## Limitations and editorial checks
 
-- **Generated cutout body parts are not a skeletal rig.** They are separate
-  illustrated layers with approximate default shoulder pivots. They may not
-  line up. Inspect both the PNGs and a short rendered preview.
+- **The Blender renderer now has a real parented puppet rig**, but Gemini's
+  existing single-part/body-arm image preparation does not generate a full
+  12-part rig. The full rig currently requires manually prepared pieces.
+  Pivots and overlaps still need human alignment; there is no automatic
+  joint detection or hidden-anatomy reconstruction.
 - The image API does not guarantee a historically accurate or consistent
   likeness. Treat artwork as a reconstruction, not an archival image.
 - If you change the storyboard or script after preparing assets, recheck
