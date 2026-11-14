@@ -30,7 +30,7 @@ class AssetDraft(BaseModel):
     scene_index: int = Field(ge=1)
     status: Literal["pending_review", "approved", "rejected"] = "pending_review"
     mode: Literal["whole", "body-arm"]
-    provider: Literal["manual", "openai"]
+    provider: Literal["manual", "gemini", "openai"]
     model: str | None = None
     character_id: str | None = None
     prompts: dict[str, str] = Field(default_factory=dict)
@@ -201,7 +201,7 @@ def load_asset_draft(job_dir: Path, scene_index: int) -> AssetDraft | None:
 
 def prepare_scene_assets(
     job_dir: Path, scene_index: int, *,
-    provider: Literal["manual", "openai"] = "manual",
+    provider: Literal["manual", "gemini", "openai"] = "manual",
     mode: Literal["whole", "body-arm"] = "whole",
     source: Path | None = None,
     arm_source: Path | None = None,
@@ -209,6 +209,7 @@ def prepare_scene_assets(
     description: str = "",
     model: str | None = None,
     allow_paid: bool = False,
+    image_budget_usd: float | None = None,
     remove_background: bool = False,
     generate_background: bool = False,
     replace_draft: bool = False,
@@ -216,18 +217,18 @@ def prepare_scene_assets(
 ) -> AssetDraft:
     """Prepare *unapproved* PNG cutouts. Never writes a live Blender spec.
 
-    For body-arm/OpenAI: one reference character + two reference-guided edits.
+    For body-arm hosted generation: one reference character + two reference-guided edits.
     Their geometry may be inconsistent; review alignment before approving.
     """
     job_dir = Path(job_dir).resolve()
-    if provider not in ("manual", "openai") or mode not in ("whole", "body-arm"):
+    if provider not in ("manual", "gemini", "openai") or mode not in ("whole", "body-arm"):
         raise ValueError("Unsupported provider or cutout mode")
     if not isinstance(scene_index, int) or scene_index < 1:
         raise ValueError("Scene index must be positive")
-    if provider == "openai" and not allow_paid:
+    if provider in ("gemini", "openai") and not allow_paid:
         raise ValueError("Hosted image generation requires explicit --allow-paid")
-    if generate_background and (provider != "openai" or not allow_paid):
-        raise ValueError("Background generation requires --provider openai --allow-paid")
+    if generate_background and (provider == "manual" or not allow_paid):
+        raise ValueError("Background generation requires --provider gemini/openai --allow-paid")
     if provider == "manual" and (source is None or (mode == "body-arm" and arm_source is None)):
         raise ValueError("Manual mode needs --source and, for body-arm, --arm-source")
     board = load(job_dir / "storyboard.json")
@@ -239,7 +240,30 @@ def prepare_scene_assets(
         raise FileExistsError("Draft exists; approve/reject it or pass --replace-draft to regenerate")
     reference = _reference_for_character(job_dir, character_id, source)
     prompts = _prompts(shot, description, mode)
-    generate = generator or _openai_image
+    from historyforgeai.application.services.image_api_budget import (
+        preflight_image_budget, reserve_image_request,
+    )
+    if provider == "gemini":
+        from historyforgeai.infrastructure.images.gemini_cutout import (
+            gemini_image, DEFAULT_GEMINI_IMAGE_MODEL,
+        )
+        model = model or os.getenv("GEMINI_IMAGE_MODEL", DEFAULT_GEMINI_IMAGE_MODEL)
+        generate = generator or gemini_image
+    elif provider == "openai":
+        model = model or os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+        generate = generator or _openai_image
+    else:
+        generate = None
+
+    if provider != "manual":
+        expected_calls = (1 if mode == "whole" else (2 if reference else 3))
+        expected_calls += int(generate_background)
+        preflight_image_budget(job_dir, provider, expected_calls, image_budget_usd)
+
+    def generate_with_budget(prompt, ref, transparent, selected_model):
+        reserve_image_request(job_dir, provider, selected_model, image_budget_usd)
+        return generate(prompt, ref, transparent, selected_model)
+
     staging = target.with_name(target.name + ".staging")
     if staging.exists():
         shutil.rmtree(staging)
@@ -261,7 +285,7 @@ def prepare_scene_assets(
                 hashes[name] = _hash(output)
         else:
             if mode == "whole":
-                raw = generate(prompts["whole"], reference, True, model)
+                raw = generate_with_budget(prompts["whole"], reference, True, model)
                 output = staging / "whole.png"
                 output.write_bytes(_transparent_png(raw, remove_background))
                 files["whole"] = output.name
@@ -269,11 +293,11 @@ def prepare_scene_assets(
             else:
                 # Generate a consistent reference first when no approved one exists.
                 if reference is None:
-                    raw_reference = generate(prompts["whole"], None, True, model)
+                    raw_reference = generate_with_budget(prompts["whole"], None, True, model)
                     reference = staging / "reference.png"
                     reference.write_bytes(_transparent_png(raw_reference, remove_background))
                 for name in ("body", "arm"):
-                    raw = generate(prompts[name], reference, True, model)
+                    raw = generate_with_budget(prompts[name], reference, True, model)
                     output = staging / f"{name}.png"
                     output.write_bytes(_transparent_png(raw, remove_background))
                     files[name] = output.name
@@ -294,7 +318,7 @@ def prepare_scene_assets(
             # Background is a *separate* storyboard candidate, always pending review.
             from historyforgeai.application.services.image_candidates import create_candidate
             temp = target / "background.png"
-            temp.write_bytes(generate(prompts["background"], None, False, model))
+            temp.write_bytes(generate_with_budget(prompts["background"], None, False, model))
             try:
                 background_candidate = str(create_candidate(job_dir, scene_index, "manual", source=temp))
             finally:
