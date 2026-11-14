@@ -255,7 +255,7 @@ cutout_scene = st.selectbox(
     key='cutout_scene',
 )
 cutout_shot = next(shot for shot in board.shots if shot.scene_index == cutout_scene)
-cutout_provider = st.selectbox('Illustration source', ['manual', 'openai'], key='cutout_provider')
+cutout_provider = st.selectbox('Illustration source', ['gemini', 'openai', 'manual'], key='cutout_provider')
 cutout_mode = st.selectbox(
     'Animation asset type', ['whole', 'body-arm'], key='cutout_mode',
     help='body-arm uses reference-guided AI edits and may need manual alignment corrections.',
@@ -280,19 +280,35 @@ cutout_arm_upload = (
 )
 cutout_remove_bg = st.checkbox(
     'Remove opaque image background locally (requires rembg; may download model weights)',
-    key='cutout_remove_bg',
+    value=True, key='cutout_remove_bg',
 )
 cutout_generate_bg = st.checkbox(
     'Also generate an illustrated background as a NEW pending-review storyboard image',
-    disabled=cutout_provider != 'openai', key='cutout_generate_bg',
+    disabled=cutout_provider == 'manual', key='cutout_generate_bg',
 )
 cutout_paid = st.checkbox(
-    'I authorize potentially billed OpenAI image generation calls',
-    disabled=cutout_provider != 'openai', key='cutout_paid',
+    'I authorize potentially billed Gemini/OpenAI image generation calls',
+    disabled=cutout_provider == 'manual', key='cutout_paid',
+)
+from historyforgeai.application.services.image_api_budget import (
+    usage_summary, job_budget_limit,
+)
+cutout_budget = st.number_input(
+    'Estimated image API budget for this job (USD)',
+    min_value=0.01, max_value=1000.0, value=job_budget_limit(), step=0.25,
+    disabled=cutout_provider == 'manual', key='cutout_budget',
+    help='An estimated request guard, NOT a provider billing limit. '
+         'Actual charges depend on model and usage; check Google AI Studio billing.',
+)
+cutout_usage = usage_summary(job_dir)
+st.caption(
+    f"Image API attempts for this job: {cutout_usage['attempted_requests']} "
+    f"· estimated spend: ${cutout_usage['estimated_spend_usd']:.2f}. "
+    "Estimates are configurable and may differ from actual charges."
 )
 cutout_replace = st.checkbox('Replace an existing cutout draft', key='cutout_replace')
 draft = load_asset_draft(job_dir, cutout_scene)
-if st.button('Prepare cutout draft', disabled=cutout_provider == 'openai' and not cutout_paid):
+if st.button('Prepare cutout draft', disabled=cutout_provider != 'manual' and not cutout_paid):
     try:
         from io import BytesIO
         from PIL import Image
@@ -318,8 +334,9 @@ if st.button('Prepare cutout draft', disabled=cutout_provider == 'openai' and no
             source=source_path, arm_source=arm_path,
             character_id=cutout_character_id or None,
             description=cutout_description, allow_paid=cutout_paid,
+            image_budget_usd=cutout_budget if cutout_provider != 'manual' else None,
             remove_background=cutout_remove_bg,
-            generate_background=cutout_generate_bg if cutout_provider == 'openai' else False,
+            generate_background=cutout_generate_bg if cutout_provider != 'manual' else False,
             replace_draft=cutout_replace,
         )
         st.session_state['cutout_feedback'] = f'Draft created for scene {result.scene_index}; review before approval.'
