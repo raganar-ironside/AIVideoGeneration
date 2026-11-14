@@ -147,7 +147,9 @@ class Blender2DRenderer:
             raise RuntimeError("Blender is required for --visual-style blender-2d (install Blender 3.6+)")
         if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
             raise RuntimeError("ffmpeg and ffprobe are required for Blender rendering")
+        from historyforgeai.application.services.illustrated_assets import verify_approved_assets
         for scene in plan.scenes:
+            verify_approved_assets(Path(job_dir), scene.index)
             build_blender_scene(Path(job_dir), scene, self.width, self.height, self.fps)
 
     def render(self, plan: ShortPlan, job_dir: str, audio_path: str | None = None,
