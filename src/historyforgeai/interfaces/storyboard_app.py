@@ -6,6 +6,11 @@ from historyforgeai.application.services.storyboard import load, save, apply_app
 from historyforgeai.application.services.scene_alignment import duplicate_image_groups, scene_mapping_issues, swap_scene_images
 from historyforgeai.application.services.script_review import save_script_edits, approve_script, script_approved
 from historyforgeai.domain.models import ShortPlan
+from historyforgeai.config import ROOT
+from dotenv import load_dotenv
+
+# Streamlit does not pass through CLI settings(), so load local API credentials.
+load_dotenv(ROOT / ".env")
 from historyforgeai.infrastructure.assets.commons_candidates import search_commons
 from historyforgeai.application.services.image_candidates import recover_missing_candidates
 
