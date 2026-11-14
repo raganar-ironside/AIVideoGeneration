@@ -131,11 +131,16 @@ def compile_multi_character_scene(
                                 add(root, at, properties, pose.easing)
                         else:
                             properties = {
-                                "dx": pose.dx * action.intensity,
-                                "dy": pose.dy * action.intensity,
                                 "rotation_deg": pose.rotation_deg * action.intensity,
                                 "scale": 1 + (pose.scale - 1) * action.intensity,
                             }
+                            if joint not in root_ids:
+                                properties.update(dx=pose.dx * action.intensity,
+                                                  dy=pose.dy * action.intensity)
+                            elif "root" not in clip.tracks:
+                                # A torso motion must not erase accumulated travel.
+                                properties.update(dx=base_x + pose.dx * action.intensity,
+                                                  dy=base_y + pose.dy * action.intensity)
                             add(joint, at, properties, pose.easing)
                 if "root" in clip.tracks:
                     last = clip.tracks["root"][-1]
