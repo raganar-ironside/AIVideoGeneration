@@ -6,6 +6,17 @@ mode does **not** generate artwork, separate body parts, or auto-rig characters:
 you supply transparent PNG/WebP layers, such as a body and sword arm, and
 animate their position, rotation and scale with keyframes.
 
+## Automatic asset preparation
+
+You can now generate cutout drafts using the OpenAI image API, import a
+manual character PNG, or use optional local background removal. Drafts are
+previewed and explicitly approved in Streamlit **Step 2.5** before Blender
+uses them. Separate body/arm generation is experimental and may require
+manual alignment; there is no automatic skeletal rigging.
+
+See [Illustrated asset preparation](ILLUSTRATED_ASSETS.md) for commands,
+review workflow, costs, and limitations.
+
 ## Install
 
 Blender 3.6+ is recommended, along with FFmpeg and FFprobe. The renderer
