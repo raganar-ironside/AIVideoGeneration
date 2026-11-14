@@ -111,3 +111,21 @@ def test_missing_script_approval_blocks_render_and_speech(tmp_path):
     with pytest.raises(ValueError, match="Script is not approved"):
         render_approved_job(job.id, tmp_path, pipeline.repo, renderer, speech=speech)
     assert not speech.calls and not renderer.calls
+
+
+def test_renderer_preflight_rejects_assets_before_speech(tmp_path):
+    pipeline, job, folder, board = setup_job(tmp_path)
+    for shot in board.shots:
+        shot.status = "approved"
+    save(folder / "storyboard.json", board)
+
+    class RejectingRenderer(FakeRenderer):
+        def validate(self, plan, job_dir):
+            raise ValueError("Missing cutout asset")
+
+    renderer = RejectingRenderer()
+    speech = FakeSpeech()
+    with pytest.raises(ValueError, match="Missing cutout asset"):
+        render_approved_job(job.id, tmp_path, pipeline.repo, renderer, speech=speech)
+    assert speech.calls == []
+    assert renderer.calls == []
