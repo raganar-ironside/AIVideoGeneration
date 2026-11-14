@@ -62,7 +62,7 @@ class PuppetPart(BaseModel):
 class PuppetRig(BaseModel):
     """Version 2 ONLY. The independent-layer format is intentionally unsupported."""
     model_config = ConfigDict(extra="forbid")
-    version: Literal[2] = 2
+    version: Literal[2]
     parts: list[PuppetPart] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
@@ -123,7 +123,7 @@ def build_blender_scene(job_dir: Path, scene, width: int, height: int, fps: int)
         raise ValueError(f"Unreadable approved background for scene {scene.index}") from exc
 
     spec_file = Path(job_dir) / "animation" / f"scene_{scene.index:02d}.json"
-    rig = PuppetRig.model_validate_json(spec_file.read_text(encoding="utf-8")) if spec_file.exists() else PuppetRig()
+    rig = PuppetRig.model_validate_json(spec_file.read_text(encoding="utf-8")) if spec_file.exists() else PuppetRig(version=2)
     parts = []
     for part in rig.parts:
         data = part.model_dump()
