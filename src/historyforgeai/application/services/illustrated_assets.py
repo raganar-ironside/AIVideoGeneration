@@ -410,6 +410,9 @@ def approve_scene_assets(job_dir: Path, scene_index: int) -> Path:
     draft = load_asset_draft(job_dir, scene_index)
     if draft is None or draft.status != "pending_review":
         raise ValueError("No pending cutout draft to approve")
+    live = job_dir / "animation" / f"scene_{scene_index:02d}.json"
+    if live.is_file() and json.loads(live.read_text(encoding="utf-8")).get("version") == 3:
+        raise ValueError("This scene uses multi-character v3; use the puppets builder instead")
     # Verify the entire draft before changing the live animation.
     for name, filename in draft.files.items():
         source = (draft_dir / filename).resolve()
@@ -487,11 +490,41 @@ def verify_approved_assets(job_dir: Path, scene_index: int) -> None:
     job_dir = Path(job_dir).resolve()
     record_path = job_dir / "animation" / "approved" / f"scene_{scene_index:02d}.json"
     if not record_path.exists():
-        return  # Backwards compatibility for manually authored scene specs.
+        spec_path = job_dir / "animation" / f"scene_{scene_index:02d}.json"
+        if spec_path.is_file():
+            authored = json.loads(spec_path.read_text(encoding="utf-8"))
+            if authored.get("version") == 3:
+                raise ValueError("Multi-character v3 scenes must be explicitly approved")
+        return  # Backwards compatibility for manually authored v2 scenes.
     record = json.loads(record_path.read_text(encoding="utf-8"))
     spec = job_dir / "animation" / f"scene_{scene_index:02d}.json"
     if not spec.is_file() or _hash(spec) != record["spec_sha256"]:
         raise ValueError(f"Scene {scene_index} cutout animation changed after approval")
+    if record.get("format") == "puppet-v3":
+        from historyforgeai.application.services.motion_library import motion_source_path
+        from historyforgeai.infrastructure.rendering.blender_2d import resolve_cutout_asset
+        for relative, digest in record["asset_sha256"].items():
+            # Only scene-local, approved character images may be hashed.
+            prefix = f"animation/assets/scene_{scene_index:02d}/characters/"
+            if not relative.startswith(prefix):
+                raise ValueError("Invalid approved v3 character asset path")
+            path = resolve_cutout_asset(job_dir, relative)
+            if _hash(path) != digest:
+                raise ValueError(f"Scene {scene_index} character asset changed after approval")
+        for name, digest in record.get("motion_sha256", {}).items():
+            path = motion_source_path(job_dir, name)
+            if path is None or _hash(path) != digest:
+                raise ValueError(f"Scene {scene_index} motion {name} changed after approval")
+        from historyforgeai.application.services.puppet_timeline import MultiCharacterScene
+        spec_v3 = MultiCharacterScene.model_validate_json(spec.read_text(encoding="utf-8"))
+        expected_assets = {p.asset for c in spec_v3.characters for p in c.parts}
+        if expected_assets != set(record["asset_sha256"]):
+            raise ValueError("Approved v3 character asset manifest does not match scene")
+        expected_motions = {a.motion for a in spec_v3.timeline
+                            if motion_source_path(job_dir, a.motion) is not None}
+        if expected_motions != set(record.get("motion_sha256", {})):
+            raise ValueError("Approved v3 motion manifest does not match scene")
+        return
     for name, digest in record["asset_sha256"].items():
         path = job_dir / "animation" / "assets" / f"scene_{scene_index:02d}" / f"{name}.png"
         if not path.is_file() or _hash(path) != digest:

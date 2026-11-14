@@ -24,3 +24,5 @@ jobs:
         run: python -m pytest -q
       - name: Smoke-test real headless Blender rendering
         run: python scripts/blender_2d_demo.py --duration 0.25 --output-dir /tmp/blender-2d-smoke
+      - name: Smoke-test two characters with shared motion timeline
+        run: python scripts/multi_character_demo.py --duration 0.5 --output-dir /tmp/multi-character-smoke

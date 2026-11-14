@@ -243,9 +243,9 @@ if st.button('Apply approved images to scene plan'):
 
 st.divider()
 st.subheader('Step 2.5 · Illustrated character cutouts (Blender)')
-st.caption('Optional: generate illustrated character layers, inspect them, then approve. '
-           'Draft assets are never used in rendering until you approve them. '
-           'For reliable animation start with a single whole-character cutout.')
+st.caption('Generate a single character or import a 12-part puppet for the legacy v2 rig. '
+           'For multiple characters and reusable motion clips, use the v3 builder below. '
+           'Draft assets are never rendered before approval.')
 from historyforgeai.application.services.illustrated_assets import (
     prepare_scene_assets, approve_scene_assets, reject_scene_assets, load_asset_draft,
     update_approved_scene_spec,
@@ -411,7 +411,7 @@ if draft:
                 st.rerun()
     if draft.status == 'approved':
         approved_spec = job_dir / 'animation' / f'scene_{cutout_scene:02d}.json'
-        if approved_spec.is_file():
+        if approved_spec.is_file() and __import__('json').loads(approved_spec.read_text(encoding='utf-8')).get('version') == 2:
             with st.expander('Puppet rig builder — joints and pivots'):
                 import json as _rig_json
                 rig_data = _rig_json.loads(approved_spec.read_text(encoding='utf-8'))
@@ -464,6 +464,183 @@ if draft:
 st.caption('Blender now uses parented puppet joints with easing. Full 12-part puppets '
            'require separately prepared PNGs and manual joint alignment; Gemini body-arm '
            'generation remains experimental. Automatic image separation is not implemented.')
+
+with st.expander('Multi-character puppet scene builder · v3', expanded=False):
+    from io import BytesIO as _BytesIO
+    import re as _re
+    from PIL import Image as _PILImage
+    from historyforgeai.application.services.puppet_scene_builder import (
+        stage_character, remove_character, add_motion_action, remove_motion_action,
+        approve_multi_scene, load_multi_draft, preview_multi_scene, update_character_joints,
+    )
+    from historyforgeai.application.services.puppet_templates import PUPPET_PARTS
+    from historyforgeai.application.services.motion_library import available_motions
+    from historyforgeai.domain.models import ShortPlan as _ShortPlan
+    multi_plan = _ShortPlan.model_validate_json(
+        (job_dir / 'scene_plan.json').read_text(encoding='utf-8')
+    )
+    multi_scene_plan = next((sc for sc in multi_plan.scenes if sc.index == cutout_scene), None)
+    multi_duration = multi_scene_plan.duration_seconds if multi_scene_plan else 6.0
+    st.caption(f'Shared scene timeline: {multi_duration:.2f} seconds. '
+               'Stage each character, add independent motions, preview the bind pose, '
+               'then explicitly approve. Motions are keyframed 2D presets, not AI choreography.')
+    multi_draft = load_multi_draft(job_dir, cutout_scene)
+    multi_live = job_dir / 'animation' / f'scene_{cutout_scene:02d}.json'
+    if multi_live.is_file() and __import__('json').loads(multi_live.read_text()).get('version') == 3:
+        st.success('This scene has an approved v3 multi-character rig. '
+                   'Adding or editing creates a separate draft.')
+    st.markdown('**Add character**')
+    multi_id = st.text_input('Character instance ID', value='shivaji',
+                             key=f'multi_character_id_{cutout_scene}')
+    cx, cy, cs, cz = st.columns(4)
+    with cx:
+        multi_x = st.number_input('Center X', value=.5, min_value=-1., max_value=2.,
+                                  step=.05, key=f'multi_x_{cutout_scene}')
+    with cy:
+        multi_y = st.number_input('Center Y', value=.5, min_value=-1., max_value=2.,
+                                  step=.05, key=f'multi_y_{cutout_scene}')
+    with cs:
+        multi_scale = st.number_input('Character scale', value=.7, min_value=.1, max_value=3.,
+                                      step=.1, key=f'multi_scale_{cutout_scene}')
+    with cz:
+        multi_depth = st.number_input('Depth', value=0, min_value=-5, max_value=5,
+                                      key=f'multi_depth_{cutout_scene}')
+    multi_uploads = st.file_uploader(
+        'Select 12 separate transparent PNGs for this character',
+        type=['png'], accept_multiple_files=True,
+        key=f'multi_uploads_{cutout_scene}_{multi_id}',
+    )
+    st.caption('Required: ' + ', '.join(p + '.png' for p in PUPPET_PARTS))
+    if st.button('Stage character in scene', key=f'multi_stage_{cutout_scene}'):
+        try:
+            if not _re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,23}', multi_id):
+                raise ValueError('Character ID must use letters, digits, hyphens or underscores')
+            expected = {p + '.png' for p in PUPPET_PARTS}
+            filenames = [file.name for file in multi_uploads]
+            if len(filenames) != len(expected) or set(filenames) != expected:
+                raise ValueError('Upload exactly the 12 required, uniquely named PNGs')
+            source_dir = job_dir / 'animation' / 'uploads' / 'multi' / f'scene_{cutout_scene:02d}' / multi_id
+            source_dir.mkdir(parents=True, exist_ok=True)
+            for upload in multi_uploads:
+                raw = upload.getvalue()
+                if not raw or len(raw) > 20 * 1024 * 1024:
+                    raise ValueError('Each puppet PNG must be under 20 MB')
+                with _PILImage.open(_BytesIO(raw)) as img:
+                    img.load()
+                    if 'A' not in img.getbands() and 'transparency' not in img.info:
+                        raise ValueError(f'{upload.name} needs a transparent background')
+                    img.save(source_dir / upload.name, format='PNG')
+            stage_character(job_dir, cutout_scene, multi_id, source_dir,
+                            x=multi_x, y=multi_y, scale=multi_scale, depth=multi_depth)
+            st.success(f'Staged {multi_id}; not yet approved for rendering.')
+            st.rerun()
+        except Exception as exc:
+            st.error(f'Character import failed: {exc}')
+
+    if multi_draft:
+        characters = multi_draft['characters']
+        st.markdown('**Staged characters**')
+        st.dataframe([{'id': c['id'], 'x': c['x'], 'y': c['y'],
+                       'scale': c['scale'], 'depth': c['depth'],
+                       'parts': len(c['parts'])} for c in characters],
+                     hide_index=True, use_container_width=True)
+        if characters:
+            selected_id = st.selectbox('Edit character joints', [c['id'] for c in characters],
+                                       key=f'multi_joint_character_{cutout_scene}')
+            selected_char = next(c for c in characters if c['id'] == selected_id)
+            with st.expander('Joint positions, parents and pivots'):
+                joint_rows = [
+                    {'id': p['id'], 'parent': p.get('parent') or '',
+                     'x': p['x'], 'y': p['y'], 'width': p['width'],
+                     'pivot_x': p['pivot'][0], 'pivot_y': p['pivot'][1], 'z': p['z']}
+                    for p in selected_char['parts']
+                ]
+                edited = st.data_editor(joint_rows, hide_index=True,
+                                        disabled=['id'], num_rows='fixed',
+                                        use_container_width=True,
+                                        key=f'multi_joints_{cutout_scene}_{selected_id}')
+                if st.button('Save staged joints', key=f'multi_save_joints_{cutout_scene}'):
+                    try:
+                        rows = edited.to_dict('records') if hasattr(edited, 'to_dict') else edited
+                        update_character_joints(job_dir, cutout_scene, selected_id, rows)
+                        st.success('Staged joint adjustments saved.')
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f'Invalid joint changes: {exc}')
+            if st.button('Remove selected staged character', key=f'multi_remove_{cutout_scene}'):
+                remove_character(job_dir, cutout_scene, selected_id)
+                st.rerun()
+
+            st.markdown('**Add an action on the shared timeline**')
+            col1, col2 = st.columns(2)
+            with col1:
+                action_character = st.selectbox('Actor', [c['id'] for c in characters],
+                                                key=f'multi_actor_{cutout_scene}')
+                action_motion = st.selectbox('Motion clip', available_motions(job_dir),
+                                             key=f'multi_motion_{cutout_scene}')
+                action_start = st.number_input('Start (seconds)', min_value=0.,
+                                               max_value=120., value=0., step=.25,
+                                               key=f'multi_start_{cutout_scene}')
+                action_duration = st.number_input('Duration (seconds)', min_value=.1,
+                                                  max_value=120., value=min(2., float(multi_duration)),
+                                                  step=.25, key=f'multi_duration_{cutout_scene}')
+            with col2:
+                action_repeat = st.number_input('Repeat cycles', min_value=1, max_value=12,
+                                                value=1, key=f'multi_repeat_{cutout_scene}')
+                action_intensity = st.slider('Intensity', min_value=.1, max_value=2.,
+                                             value=1., step=.1, key=f'multi_intensity_{cutout_scene}')
+                action_direction = st.selectbox('Travel direction', [1, -1],
+                                                format_func=lambda d: 'Right' if d == 1 else 'Left',
+                                                key=f'multi_direction_{cutout_scene}')
+                action_distance = st.number_input('Travel (canvas widths)', min_value=0.,
+                                                  max_value=2., value=.15, step=.05,
+                                                  key=f'multi_distance_{cutout_scene}')
+            if st.button('Add motion to timeline', key=f'multi_action_add_{cutout_scene}'):
+                try:
+                    add_motion_action(job_dir, cutout_scene, character=action_character,
+                                      motion=action_motion, start=action_start,
+                                      duration=action_duration, repeat=action_repeat,
+                                      intensity=action_intensity, direction=action_direction,
+                                      distance=action_distance)
+                    st.success('Action staged; different characters can act simultaneously.')
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f'Cannot add motion: {exc}')
+        if multi_draft['timeline']:
+            st.markdown('**Shared timeline**')
+            st.dataframe([{'index': i, **a} for i, a in enumerate(multi_draft['timeline'])],
+                         hide_index=True, use_container_width=True)
+            remove_index = st.selectbox('Remove action index',
+                                        list(range(len(multi_draft['timeline']))),
+                                        key=f'multi_remove_action_index_{cutout_scene}')
+            if st.button('Remove selected action', key=f'multi_remove_action_{cutout_scene}'):
+                remove_motion_action(job_dir, cutout_scene, remove_index)
+                st.rerun()
+        left, right = st.columns(2)
+        with left:
+            if st.button('Preview staged scene (static)', key=f'multi_preview_{cutout_scene}'):
+                try:
+                    preview_multi_scene(job_dir, cutout_scene)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f'Preview failed: {exc}')
+        with right:
+            if st.button('Approve multi-character scene', type='primary',
+                         key=f'multi_approve_{cutout_scene}'):
+                try:
+                    approve_multi_scene(job_dir, cutout_scene)
+                    st.success('Approved v3 scene, characters and motion timeline.')
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f'Approval failed: {exc}')
+        preview_path = job_dir / 'animation' / 'multi_drafts' / f'scene_{cutout_scene:02d}' / 'preview.png'
+        if preview_path.is_file():
+            st.image(str(preview_path), width=270,
+                     caption='Static bind-pose preview; render a short clip to inspect actual motion')
+    else:
+        st.info('No multi-character draft yet. Stage your first 12-part puppet above.')
+    st.caption('Custom motion clips can be added as validated JSON in workspace/motions/. '
+               'No natural-language motion planning, automatic rigging or collision detection yet.')
 
 st.divider()
 st.subheader('Step 3 · Narration Studio')

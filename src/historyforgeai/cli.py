@@ -85,6 +85,35 @@ def main():
             subcmd.add_argument("--scene", required=True, type=int)
         if action == "update-spec":
             subcmd.add_argument("--file", type=Path, required=True, help="Reviewed animation JSON")
+    puppets = sub.add_parser("puppets", help="Build multi-character puppet scenes and motion timelines")
+    puppetsub = puppets.add_subparsers(dest="puppet_command", required=True)
+    for action in ("add-character", "remove-character", "add-action", "remove-action",
+                   "show", "approve", "preview", "motions"):
+        command = puppetsub.add_parser(action)
+        command.add_argument("--job", required=True)
+        if action != "motions":
+            command.add_argument("--scene", type=int, required=True)
+        if action == "add-character":
+            command.add_argument("--id", required=True, help="Unique character instance ID")
+            command.add_argument("--source", required=True, type=Path, help="Directory of 12 transparent PNG parts")
+            command.add_argument("--x", type=float, default=.5)
+            command.add_argument("--y", type=float, default=.5)
+            command.add_argument("--scale", type=float, default=1)
+            command.add_argument("--depth", type=int, default=0)
+        if action == "remove-character":
+            command.add_argument("--id", required=True)
+        if action == "add-action":
+            command.add_argument("--character", required=True)
+            command.add_argument("--motion", required=True)
+            command.add_argument("--start", type=float, required=True, help="Start time in seconds")
+            command.add_argument("--duration", type=float, required=True, help="Duration in seconds")
+            command.add_argument("--repeat", type=int, default=1)
+            command.add_argument("--intensity", type=float, default=1)
+            command.add_argument("--direction", type=int, choices=[-1, 1], default=1)
+            command.add_argument("--distance", type=float, default=0,
+                                 help="Root horizontal travel in canvas widths")
+        if action == "remove-action":
+            command.add_argument("--index", type=int, required=True, help="Zero-based action index")
     sub.add_parser("list", help="List jobs")
     sub.add_parser("topics", help="Show queued topics")
     args = parser.parse_args()
@@ -222,6 +251,48 @@ def main():
                 if draft is None:
                     raise FileNotFoundError("No draft for this scene")
                 print(draft.model_dump_json(indent=2))
+        except Exception as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+    elif args.command == "puppets":
+        from historyforgeai.application.services.puppet_scene_builder import (
+            stage_character, remove_character, add_motion_action, remove_motion_action,
+            approve_multi_scene, load_multi_draft, preview_multi_scene,
+        )
+        from historyforgeai.application.services.motion_library import available_motions
+        try:
+            if not args.job or not all(ch.isalnum() or ch in "-_" for ch in args.job):
+                raise ValueError("Invalid job ID")
+            job_dir = ROOT / "workspace" / "jobs" / args.job
+            if not (job_dir / "scene_plan.json").is_file():
+                raise FileNotFoundError("Create a job with a scene plan first")
+            if args.puppet_command == "add-character":
+                result = stage_character(job_dir, args.scene, args.id, args.source,
+                                         x=args.x, y=args.y, scale=args.scale, depth=args.depth)
+            elif args.puppet_command == "remove-character":
+                result = remove_character(job_dir, args.scene, args.id)
+            elif args.puppet_command == "add-action":
+                result = add_motion_action(
+                    job_dir, args.scene, character=args.character, motion=args.motion,
+                    start=args.start, duration=args.duration, repeat=args.repeat,
+                    intensity=args.intensity, direction=args.direction, distance=args.distance,
+                )
+            elif args.puppet_command == "remove-action":
+                result = remove_motion_action(job_dir, args.scene, args.index)
+            elif args.puppet_command == "approve":
+                result = approve_multi_scene(job_dir, args.scene)
+            elif args.puppet_command == "preview":
+                result = preview_multi_scene(job_dir, args.scene)
+            elif args.puppet_command == "motions":
+                result = available_motions(job_dir)
+            else:
+                result = load_multi_draft(job_dir, args.scene)
+                if result is None:
+                    live = job_dir / "animation" / f"scene_{args.scene:02d}.json"
+                    result = json.loads(live.read_text(encoding="utf-8")) if live.is_file() else None
+                if result is None:
+                    raise FileNotFoundError("No multi-character scene draft or approved scene")
+            print(json.dumps(result, indent=2) if isinstance(result, (dict, list)) else result)
         except Exception as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(1)

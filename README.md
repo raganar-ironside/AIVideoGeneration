@@ -17,10 +17,35 @@
 | Storyboard review | Scene-by-scene approval, optional Streamlit UI | No automatic approval |
 | Character references | Registry of canonical character images | Does not guarantee AI-generated character consistency |
 | Narration | Kokoro ONNX Hindi, Edge TTS and eSpeak fallback; normal/documentary/epic presets; scene-level timing | Kokoro models must be downloaded separately; Edge requires internet; pronunciation needs review |
-| Video | FFmpeg vertical MP4, optional music/crossfades; Blender v2 hierarchical 2D puppet animation | 12-part rig supports parenting/easing; art separation and joint alignment are manual |
+| Video | FFmpeg vertical MP4, optional music/crossfades; Blender v2 puppet rigs and v3 multi-character timelines | Reusable 2D motion clips and up to 8 actors; art separation, realistic choreography and joint alignment are manual |
 | Jobs and tests | Filesystem JSON manifests; pytest tests | Local workspace is not backed up by Git |
 
 **Not yet implemented:** word-level subtitles, automated historical verification, enforced API budget limits, automatic YouTube upload/scheduling, or reliable AI character identity preservation.
+
+## New: multiple animated characters and reusable motion clips
+
+Blender now supports **v3 multi-character scenes**: stage two or more
+12-part puppets, give each character its own placement/depth, and schedule
+actions such as `walk`, `run`, `point`, `sword_slash` and `defend`
+on a **shared scene timeline**. Different characters can act simultaneously.
+Custom motions are validated JSON clips under `workspace/motions/`.
+Review and approve the scene before rendering.
+
+```bash
+# Offline demo with two puppet actors (no AI image credits)
+python scripts/multi_character_demo.py --duration 6
+
+# See all available reusable motions for an existing job
+historyforgeai puppets motions --job JOB_ID
+```
+
+See **[Multi-character animation and custom motion guide](docs/MULTI_CHARACTER_MOTIONS.md)**
+for adding characters, actions, editing joints, approval and limits.
+
+**Still manual:** producing 12 clean PNG body parts per character,
+aligning joints, selecting/timing motions and reviewing results.
+There is no natural-language choreography planner, automatic foot planting
+or collision physics yet.
 
 ## Setup — Ubuntu on WSL2
 

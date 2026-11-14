@@ -123,11 +123,25 @@ def build_blender_scene(job_dir: Path, scene, width: int, height: int, fps: int)
         raise ValueError(f"Unreadable approved background for scene {scene.index}") from exc
 
     spec_file = Path(job_dir) / "animation" / f"scene_{scene.index:02d}.json"
-    rig = PuppetRig.model_validate_json(spec_file.read_text(encoding="utf-8")) if spec_file.exists() else PuppetRig(version=2)
+    if spec_file.exists():
+        authored = json.loads(spec_file.read_text(encoding="utf-8"))
+        if authored.get("version") == 3:
+            from historyforgeai.application.services.puppet_timeline import (
+                MultiCharacterScene, compile_multi_character_scene,
+            )
+            scene_v3 = MultiCharacterScene.model_validate(authored)
+            source_parts = compile_multi_character_scene(
+                scene_v3, job_dir, scene.duration_seconds,
+            )
+        else:
+            rig = PuppetRig.model_validate(authored)
+            source_parts = [part.model_dump() for part in rig.parts]
+    else:
+        source_parts = []
     parts = []
-    for part in rig.parts:
-        data = part.model_dump()
-        data["asset"] = str(resolve_cutout_asset(job_dir, part.asset))
+    for part in source_parts:
+        data = dict(part)
+        data["asset"] = str(resolve_cutout_asset(job_dir, data["asset"]))
         parts.append(data)
     frames = max(1, round(scene.duration_seconds * fps))
     return {
