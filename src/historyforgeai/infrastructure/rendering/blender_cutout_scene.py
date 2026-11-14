@@ -114,8 +114,12 @@ def main():
     scene.frame_start = 1
     scene.frame_end = frames
     scene.render.film_transparent = False
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("Cutout World")
     scene.world.use_nodes = True
-    scene.world.node_tree.nodes.get("Background").inputs["Color"].default_value = (0.02, 0.03, 0.06, 1)
+    background = scene.world.node_tree.nodes.get("Background")
+    if background is not None:
+        background.inputs["Color"].default_value = (0.02, 0.03, 0.06, 1)
 
     canvas_w = 2.0
     canvas_h = canvas_w * height / width
