@@ -9,7 +9,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from historyforgeai.infrastructure.rendering.blender_2d import PuppetKeyframe
 
 MOTION_NAME = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
 
@@ -124,26 +123,33 @@ BUILTIN_MOTIONS = {
 }
 
 
-def load_motion(job_dir: Path, name: str) -> MotionClip:
+def motion_source_path(job_dir: Path, name: str) -> Path | None:
+    """Resolve the selected custom JSON file, or None for a built-in."""
     if not MOTION_NAME.fullmatch(name):
         raise ValueError("Invalid motion name")
     if name in BUILTIN_MOTIONS:
-        return BUILTIN_MOTIONS[name]
+        return None
     job = Path(job_dir).resolve()
-    # Prefer a job-specific motion, then the reusable workspace library.
     for root in (job / "motions", job.parent.parent / "motions"):
         root = root.resolve()
         path = (root / f"{name}.json").resolve()
         if not path.is_relative_to(root):
             raise ValueError("Motion path escapes the allowed directory")
         if path.is_file():
-            if path.stat().st_size > 64 * 1024:
-                raise ValueError("Motion clip exceeds 64 KiB")
-            clip = MotionClip.model_validate_json(path.read_text(encoding="utf-8"))
-            if clip.name != name:
-                raise ValueError("Motion filename and name must match")
-            return clip
-    raise ValueError(f"Unknown motion {name!r}; use a built-in motion or add workspace/motions/{name}.json")
+            return path
+    raise ValueError(f"Unknown motion {name!r}; add workspace/motions/{name}.json")
+
+
+def load_motion(job_dir: Path, name: str) -> MotionClip:
+    path = motion_source_path(job_dir, name)
+    if path is None:
+        return BUILTIN_MOTIONS[name]
+    if path.stat().st_size > 64 * 1024:
+        raise ValueError("Motion clip exceeds 64 KiB")
+    clip = MotionClip.model_validate_json(path.read_text(encoding="utf-8"))
+    if clip.name != name:
+        raise ValueError("Motion filename and name must match")
+    return clip
 
 
 def available_motions(job_dir: Path) -> list[str]:
