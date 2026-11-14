@@ -410,6 +410,9 @@ def approve_scene_assets(job_dir: Path, scene_index: int) -> Path:
     draft = load_asset_draft(job_dir, scene_index)
     if draft is None or draft.status != "pending_review":
         raise ValueError("No pending cutout draft to approve")
+    live = job_dir / "animation" / f"scene_{scene_index:02d}.json"
+    if live.is_file() and json.loads(live.read_text(encoding="utf-8")).get("version") == 3:
+        raise ValueError("This scene uses multi-character v3; use the puppets builder instead")
     # Verify the entire draft before changing the live animation.
     for name, filename in draft.files.items():
         source = (draft_dir / filename).resolve()
@@ -487,7 +490,12 @@ def verify_approved_assets(job_dir: Path, scene_index: int) -> None:
     job_dir = Path(job_dir).resolve()
     record_path = job_dir / "animation" / "approved" / f"scene_{scene_index:02d}.json"
     if not record_path.exists():
-        return  # Backwards compatibility for manually authored scene specs.
+        spec_path = job_dir / "animation" / f"scene_{scene_index:02d}.json"
+        if spec_path.is_file():
+            authored = json.loads(spec_path.read_text(encoding="utf-8"))
+            if authored.get("version") == 3:
+                raise ValueError("Multi-character v3 scenes must be explicitly approved")
+        return  # Backwards compatibility for manually authored v2 scenes.
     record = json.loads(record_path.read_text(encoding="utf-8"))
     spec = job_dir / "animation" / f"scene_{scene_index:02d}.json"
     if not spec.is_file() or _hash(spec) != record["spec_sha256"]:
