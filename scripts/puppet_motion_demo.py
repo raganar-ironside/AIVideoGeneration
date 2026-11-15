@@ -6,17 +6,21 @@ import argparse
 import json
 from pathlib import Path
 
-from historyforgeai.application.services.puppet_templates import puppet_template
 from historyforgeai.domain.models import Scene, ShortPlan
-from historyforgeai.infrastructure.assets.puppet_generator import generate_puppet
+from historyforgeai.infrastructure.assets.coordinate_puppet import generate_coordinate_puppet
 from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
-from blender_2d_demo import create_demo_assets
+try:
+    from scripts.blender_2d_demo import create_demo_assets
+except ModuleNotFoundError:
+    from blender_2d_demo import create_demo_assets
 
 
-def motion_rig(mode: str) -> dict:
+def motion_rig(mode: str, rig: dict | None = None) -> dict:
     if mode not in ("string-puppet", "hinged-cutout"):
         raise ValueError(f"Unknown mode: {mode}")
-    rig = puppet_template(1)
+    if rig is None:
+        from historyforgeai.application.services.puppet_templates import puppet_template
+        rig = puppet_template(1)
     parts = {part["id"]: part for part in rig["parts"]}
     def keys(name, values):
         parts[name]["keyframes"] = values
@@ -72,12 +76,15 @@ def motion_rig(mode: str) -> dict:
 
 def prepare_scene(job: Path, style: str, mode: str) -> None:
     create_demo_assets(job)  # provides the existing painted fort backdrop
-    source = generate_puppet(style, job / "generated_art" / style)
+    generated_dir = job / "generated_art" / style
+    rig = generate_coordinate_puppet(style, generated_dir)
     target = job / "animation" / "assets" / "scene_01"
+    target.mkdir(parents=True, exist_ok=True)
     import shutil
-    for png in source.glob("*.png"):
+    for png in generated_dir.glob("*.png"):
         shutil.copy2(png, target / png.name)
-    rig = motion_rig(mode)
+    rig = motion_rig(mode, rig)
+    print(f"Using coordinate rig: {generated_dir / 'parts.json'}")
     (job / "animation" / "scene_01.json").write_text(
         json.dumps(rig, indent=2), encoding="utf-8")
 
