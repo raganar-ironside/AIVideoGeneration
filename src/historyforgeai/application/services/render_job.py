@@ -33,6 +33,14 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
     # Optional renderer preflight: reject missing cutout assets before paid/slow TTS.
     if hasattr(renderer, "validate"):
         renderer.validate(plan, folder)
+    if getattr(renderer, "preview", None) is False and (folder / "short_preview.mp4").exists():
+        if speech is not None and scene_audio:
+            raise ValueError("Preview-approved renders must reuse existing scene narration; rerender preview if timing changes")
+        from historyforgeai.application.services.preview_approval import (
+            preview_fingerprint, is_preview_approved,
+        )
+        if not is_preview_approved(folder, preview_fingerprint(folder, plan)):
+            raise ValueError("Approve the current Blender preview before final rendering")
     narration = folder / "narration.wav"
     if speech is not None:
         if scene_audio:
@@ -71,13 +79,6 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
             raise RuntimeError("Speech generation failed")
         if not narration.is_file() or narration.stat().st_size <= 44:
             raise RuntimeError("Speech generation did not create valid narration")
-    if getattr(renderer, "preview", None) is False and (folder / "short_preview.mp4").exists():
-        from historyforgeai.application.services.preview_approval import (
-            preview_fingerprint, is_preview_approved,
-        )
-        fingerprint = preview_fingerprint(folder, plan)
-        if not is_preview_approved(folder, fingerprint):
-            raise ValueError("Approve the current Blender preview before final rendering")
     audio = str(narration) if narration.is_file() else None
     output = renderer.render(plan, str(folder), audio, motion=motion)
     if not preview:
