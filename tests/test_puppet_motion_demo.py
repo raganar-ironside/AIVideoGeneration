@@ -1,4 +1,4 @@
-from puppet_motion_demo import motion_rig
+from scripts.puppet_motion_demo import motion_rig
 
 
 def test_both_motion_modes_have_valid_hierarchical_rigs():
