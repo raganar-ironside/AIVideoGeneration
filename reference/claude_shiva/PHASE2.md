@@ -63,3 +63,45 @@ To compare with the former CPU Cycles mode, append `--engine cycles`.
 EEVEE GPU performance varies with AMD integrated graphics and driver support.
 For a single frame, look for `workspace/claude_rig_demo/frames/preview_frame_XXXX.png`.
 The original full reference video is not affected by these options.
+
+## Reusable environmental effects
+
+The `effects` array animates existing overlay IDs without changing character
+rigs. Each effect supports `x`, `y`, `rotation_deg`, and `opacity` channels.
+Opacity ranges from 0 (invisible) to 1 (opaque PNG alpha). Each channel is a
+list of `[time_seconds, value]` pairs. Supported easing modes: `BEZIER`
+(default, smooth), `LINEAR`, `CONSTANT`.
+
+Example (water):
+
+```json
+{
+  "overlays": [
+    {"id": "water", "asset": "water", "bounds": [-6, -23.4, 6, 0.6],
+     "z": 2, "location": [0, -11], "opacity": 0.55}
+  ],
+  "effects": [
+    {"id": "water", "type": "water", "easing": "BEZIER",
+     "channels": {
+       "y": [[0, -11], [1, -11], [3.4, -4.5], [4.95, -3.8]],
+       "opacity": [[0, 0.35], [1, 0.35], [3.4, 0.55], [4.95, 0.6]]
+     }}
+  ]
+}
+```
+
+The `type` field describes the effect for scene authors; the renderer uses
+the generic overlay channels. For sun/moon/clouds, supply a suitable transparent
+PNG and different keyframes. This is **not** fluid simulation, lighting
+simulation, or procedural particle generation.
+
+Preview before merging:
+
+```powershell
+python -m pytest tests/test_claude_configurable_rig.py -v
+python scripts/claude_rig_demo.py --preview --blender "C:\Program Files\Blender Foundation\Blender 5.3\blender.exe"
+```
+
+Visually check that the water remains below the character's face and does not
+hide the character. No Blender render or visual QA was performed by the GitHub
+code edit.
