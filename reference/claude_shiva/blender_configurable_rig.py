@@ -84,9 +84,23 @@ def render(spec, output_dir):
     frames = round(fps * duration)
     if fps < 1 or duration <= 0 or frames < 2:
         raise ValueError("Invalid FPS or duration")
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
-    scene.cycles.samples = int(spec.get("samples", 6))
+    requested_engine = spec.get("render_engine", "eevee").lower()
+    if requested_engine == "cycles":
+        scene.render.engine = "CYCLES"
+        scene.cycles.device = "CPU"
+        scene.cycles.samples = int(spec.get("samples", 6))
+    elif requested_engine == "eevee":
+        available = {item.identifier for item in
+                     scene.render.bl_rna.properties["engine"].enum_items}
+        for candidate in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
+            if candidate in available:
+                scene.render.engine = candidate
+                break
+        else:
+            raise RuntimeError("EEVEE is unavailable in this Blender version")
+    else:
+        raise ValueError("render_engine must be 'eevee' or 'cycles'")
+    print("Render engine:", scene.render.engine, flush=True)
     scene.render.resolution_x = int(spec.get("width", 720))
     scene.render.resolution_y = int(spec.get("height", 1280))
     scene.render.resolution_percentage = 100
@@ -163,7 +177,16 @@ def render(spec, output_dir):
         for channel, points in channels.items():
             keyframes(objects[name], channel, points, fps, frames)
     output_dir.mkdir(parents=True, exist_ok=True)
-    bpy.ops.render.render(animation=True)
+    single_frame = spec.get("single_frame")
+    if single_frame is not None:
+        frame = int(single_frame)
+        if not 1 <= frame <= frames:
+            raise ValueError("single_frame must be between 1 and %d" % frames)
+        scene.frame_set(frame)
+        scene.render.filepath = str(output_dir / ("preview_frame_%04d.png" % frame))
+        bpy.ops.render.render(write_still=True)
+    else:
+        bpy.ops.render.render(animation=True)
 
 
 def main():
