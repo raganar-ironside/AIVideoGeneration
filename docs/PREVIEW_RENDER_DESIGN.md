@@ -1,43 +1,45 @@
-# Cross-platform preview → approval → final render
+# Blender preview → approval → final render
 
-Status: **infrastructure foundation only**. The existing CLI and Streamlit app
-do not yet use this module. Do not treat this branch as a finished workflow.
+## Platforms
+Windows, Linux and WSL2 are supported by the same Python code. Install Blender
+3.6+, FFmpeg and FFprobe in the operating system running Python. Blender is
+discovered from PATH, BLENDER_PATH, or a standard Windows Blender installation.
+FFMPEG_PATH and FFPROBE_PATH override executable lookup.
 
-## Platform support
+## Streamlit workflow
+1. Approve the script, scene images and cutout assets as before.
+2. Generate narration separately before preview if you need synchronized audio.
+3. In Step 3.5 click **Generate / refresh Blender preview**.
+4. Review `short_preview.mp4` (540×960, 24 FPS), then click **Approve current Blender preview**.
+5. Render in Step 3 using Blender 2D. This reuses existing narration and renders
+   full-resolution clips. If scene inputs changed, preview approval is rejected.
+6. Edit a scene and regenerate the preview; unchanged scene clips are cached.
+   Preview and final caches are isolated.
 
-Native Windows, Ubuntu and WSL2 use the same Python package. Install Blender
-3.6+ and FFmpeg for the environment running the Python process. On Windows,
-the helper searches standard Blender Foundation installation folders if
-Blender is absent from PATH. On WSL2, install Linux Blender or explicitly set
-BLENDER_PATH to a compatible executable; avoid mixing Windows and WSL paths
-without conversion.
+CLI:
+```bash
+historyforgeai render --job JOB_ID --visual-style blender-2d --preview
+historyforgeai render --job JOB_ID --visual-style blender-2d
+```
 
-Optional environment variables:
+Preview mode does not synthesize audio. Existing `narration.wav` is reused.
+Do not use `--generate-audio` or `--scene-audio` with `--preview`.
+After a preview exists, final Blender rendering requires its explicit approval
+and disallows scene-audio regeneration, which could change the timeline.
 
-- `BLENDER_PATH`: absolute path to Blender executable
-- `FFMPEG_PATH`: absolute path to FFmpeg executable
+## Cache and approval
+Scene clips are cached by validated Blender payload, image-content SHA-256,
+render profile, and renderer/encoding version. Preview clips live in
+`preview_clips/`; final clips remain in `clips/`. Changed inputs cause
+individual scenes to rerender. The final assembly is recreated each run.
+Approval records bind the preview's hash to the current scene fingerprint.
+An edited scene or replaced preview invalidates approval.
 
-## Profiles
-
-- Preview: 540 × 960, 24 FPS, 8 samples
-- Final: 1080 × 1920, 24 FPS, 32 samples
-
-Both use identical scene keyframes and timeline duration. Lower resolution
-does not guarantee a fixed preview speedup.
-
-## Cache safety
-
-Compute SHA-256 of all scene inputs, including approved cutout images,
-backgrounds, animation specifications and any audio affecting clip output.
-Include render profile, Blender/renderer version, encoding settings and
-other render-affecting settings in the cache key. Preview clips must **never**
-satisfy final-render cache lookups.
-
-## Remaining integration work
-
-1. Wire `RenderProfile` into the existing Blender scene renderer.
-2. Write preview clips to a separate directory and cache them by content key.
-3. Add Streamlit preview player, per-scene regeneration and explicit approval.
-4. Invalidate approvals when scene inputs change.
-5. Render only approved scenes at final quality; assemble final MP4.
-6. Add integration tests on Windows and Ubuntu CI, including Blender smoke tests.
+## Known limitations
+- No automatic live viewport streaming; preview is a lower-resolution MP4.
+- Blender scene renderer still uses its existing CPU Cycles samples.
+- Native Windows and WSL2 Blender integration tests require installed binaries;
+  CI currently runs Python unit and syntax checks only.
+- The original no-preview CLI final render remains supported for compatibility;
+  the approval gate applies once a preview has been generated.
+- Speech must be generated before preview if synchronized audio is required.
