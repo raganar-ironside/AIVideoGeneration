@@ -729,6 +729,39 @@ preview_path = job_dir / 'narration_preview.wav'
 if preview_path.is_file():
     st.audio(str(preview_path))
 
+st.divider()
+st.subheader('Step 3.5 · Blender preview and approval')
+st.caption('Generate a lightweight 540×960 draft. The draft reuses existing narration and does not overwrite short.mp4.')
+preview_file = job_dir / 'short_preview.mp4'
+if st.button('Generate / refresh Blender preview'):
+    try:
+        cmd = [sys.executable, '-m', 'historyforgeai.cli', 'render',
+               '--job', job_dir.name, '--visual-style', 'blender-2d', '--preview']
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+        if result.returncode:
+            st.error(result.stderr[-3000:] or result.stdout[-3000:])
+        else:
+            st.success('Draft preview ready. Review every scene before approving.')
+            st.rerun()
+    except Exception as exc:
+        st.error(f'Preview failed: {exc}')
+if preview_file.is_file():
+    st.video(str(preview_file))
+    from historyforgeai.application.services.preview_approval import (
+        preview_fingerprint, approve_preview, is_preview_approved,
+    )
+    try:
+        current_fingerprint = preview_fingerprint(job_dir, plan)
+        if is_preview_approved(job_dir, current_fingerprint):
+            st.success('Preview approved for the current scene inputs')
+        elif st.button('Approve current Blender preview'):
+            approve_preview(job_dir, current_fingerprint)
+            st.rerun()
+        else:
+            st.warning('Preview not approved. Review it before final rendering.')
+    except Exception as exc:
+        st.error(f'Preview approval check failed: {exc}')
+
 st.caption('Full render overwrites short.mp4 and narration.wav. Back up existing files first.')
 visual_style = st.selectbox('Video rendering style', ['cinematic', 'blender-2d'],
                             help='Blender 2D uses approved cutout layers, and requires Blender + FFmpeg installed.')
