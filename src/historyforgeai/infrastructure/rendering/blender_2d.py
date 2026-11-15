@@ -15,6 +15,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from historyforgeai.domain.models import ShortPlan
+from historyforgeai.render_preview import PREVIEW, FINAL, blender_path, ffmpeg_path, find_executable, file_sha256, scene_cache_key
 
 
 class PuppetKeyframe(BaseModel):
@@ -151,7 +152,7 @@ def build_blender_scene(job_dir: Path, scene, width: int, height: int, fps: int)
 
 def _frame_count(video: Path) -> int:
     result = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
+        [str(find_executable("ffprobe", "FFPROBE_PATH")), "-v", "error", "-select_streams", "v:0", "-count_frames",
          "-show_entries", "stream=nb_read_frames",
          "-of", "default=noprint_wrappers=1:nokey=1", str(video)],
         text=True, timeout=60,
@@ -164,17 +165,17 @@ def _frame_count(video: Path) -> int:
 class Blender2DRenderer:
     """Produce the same clips/scene_XX.mp4 and short.mp4 as FFmpegRenderer."""
 
-    def __init__(self, width=720, height=1280, fps=24):
+    def __init__(self, width=720, height=1280, fps=24, *, preview=False):
         if width <= 0 or height <= 0 or fps <= 0:
             raise ValueError("Video dimensions and FPS must be positive")
-        self.width, self.height, self.fps = width, height, fps
+        self.preview = preview
+        self.width, self.height, self.fps = (PREVIEW.width, PREVIEW.height, fps) if preview else (width, height, fps)
 
     def validate(self, plan: ShortPlan, job_dir: Path) -> None:
         """Fail before speech generation if Blender or any cutout asset is missing."""
-        if not shutil.which("blender"):
-            raise RuntimeError("Blender is required for --visual-style blender-2d (install Blender 3.6+)")
-        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-            raise RuntimeError("ffmpeg and ffprobe are required for Blender rendering")
+        blender_path()
+        ffmpeg_path()
+        find_executable("ffprobe", "FFPROBE_PATH")
         from historyforgeai.application.services.illustrated_assets import verify_approved_assets
         for scene in plan.scenes:
             verify_approved_assets(Path(job_dir), scene.index)
@@ -183,11 +184,11 @@ class Blender2DRenderer:
     def render(self, plan: ShortPlan, job_dir: str, audio_path: str | None = None,
                motion: str = "zoom_in") -> str:
         self.validate(plan, Path(job_dir))
-        blender = shutil.which("blender")
+        blender = str(blender_path())
         job = Path(job_dir).resolve()
         payloads = [build_blender_scene(job, scene, self.width, self.height, self.fps)
                     for scene in plan.scenes]
-        clips = job / "clips"
+        clips = job / ("preview_clips" if self.preview else "clips")
         clips.mkdir(parents=True, exist_ok=True)
         script = Path(__file__).with_name("blender_cutout_scene.py")
         paths = []
@@ -198,6 +199,21 @@ class Blender2DRenderer:
             staging = clips / f"scene_{index:02d}.partial.mp4"
             spec = clips / f"scene_{index:02d}.blender.json"
             frames_dir = clips / f"scene_{index:02d}.frames"
+            assets = {"background": file_sha256(payload["background"])}
+            assets.update({f"part_{n}": file_sha256(part["asset"])
+                           for n, part in enumerate(payload["parts"])})
+            from dataclasses import replace
+            profile = replace(PREVIEW if self.preview else FINAL,
+                              width=self.width, height=self.height, fps=self.fps)
+            key = scene_cache_key(payload, assets, profile, "blender-cutout-v3-crf23")
+            cache_file = clips / f"scene_{index:02d}.cache.json"
+            if (clip.is_file() and cache_file.is_file()
+                    and json.loads(cache_file.read_text(encoding="utf-8")).get("key") == key
+                    and _frame_count(clip) == payload["frames"]):
+                total_frames += payload["frames"]
+                paths.append(clip)
+                continue
+            cache_file.unlink(missing_ok=True)
             spec.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             staging.unlink(missing_ok=True)
             if frames_dir.exists():
@@ -214,7 +230,7 @@ class Blender2DRenderer:
                 # Blender 5 removed direct FFmpeg output; system FFmpeg works
                 # consistently across Blender versions and produces H.264 clips.
                 subprocess.run(
-                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    [str(ffmpeg_path()), "-hide_banner", "-loglevel", "error", "-y",
                      "-framerate", str(self.fps), "-start_number", "1",
                      "-i", str(frames_dir / "frame_%04d.png"),
                      "-frames:v", str(payload["frames"]), "-c:v", "libx264",
@@ -228,6 +244,7 @@ class Blender2DRenderer:
                 if count != payload["frames"]:
                     raise RuntimeError(f"Scene {index}: expected {payload['frames']} frames, got {count}")
                 staging.replace(clip)
+                cache_file.write_text(json.dumps({"key": key}), encoding="utf-8")
             finally:
                 shutil.rmtree(frames_dir, ignore_errors=True)
                 staging.unlink(missing_ok=True)
@@ -237,14 +254,14 @@ class Blender2DRenderer:
         def ffconcat_quote(path: Path) -> str:
             return str(path.resolve()).replace("\\", "\\\\").replace("'", "'\\''")
 
-        concat = job / "clips.txt"
+        concat = job / ("preview_clips.txt" if self.preview else "clips.txt")
         concat.write_text("".join(f"file '{ffconcat_quote(path)}'\n" for path in paths), encoding="utf-8")
-        silent = job / "silent.mp4"
-        output = job / "short.mp4"
-        staging_output = job / "short.partial.mp4"
+        silent = job / ("preview_silent.mp4" if self.preview else "silent.mp4")
+        output = job / ("short_preview.mp4" if self.preview else "short.mp4")
+        staging_output = job / ("short_preview.partial.mp4" if self.preview else "short.partial.mp4")
         staging_output.unlink(missing_ok=True)
         subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            [str(ffmpeg_path()), "-hide_banner", "-loglevel", "error", "-y",
              "-f", "concat", "-safe", "0", "-i", str(concat),
              "-c", "copy", str(silent)],
             check=True, timeout=180,
@@ -253,7 +270,7 @@ class Blender2DRenderer:
         try:
             if audio_path and Path(audio_path).is_file():
                 subprocess.run(
-                    ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    [str(ffmpeg_path()), "-hide_banner", "-loglevel", "error", "-y",
                      "-i", str(silent), "-i", str(audio_path),
                      "-filter_complex", f"[1:a]apad,atrim=duration={duration:.6f}[a]",
                      "-map", "0:v:0", "-map", "[a]", "-c:v", "copy",
