@@ -35,3 +35,15 @@ def test_scene_joint_hierarchy_and_animation_times():
                           1 + round(t * spec["fps"])) for t in times]
             assert frames == sorted(set(frames))
             assert all(0 <= t <= spec["duration"] for t in times)
+
+
+def test_preview_cli_and_eevee_support_are_present():
+    runner = (ROOT / "scripts" / "claude_rig_demo.py").read_text()
+    renderer = (REF / "blender_configurable_rig.py").read_text()
+    assert 'p.add_argument("--preview"' in runner
+    assert 'p.add_argument("--frame"' in runner
+    assert 'p.add_argument("--engine"' in runner
+    assert '"BLENDER_EEVEE_NEXT"' in renderer
+    assert '"BLENDER_EEVEE"' in renderer
+    assert 'bpy.ops.render.render(write_still=True)' in renderer
+    assert 'm.surface_render_method = "DITHERED"' in renderer
