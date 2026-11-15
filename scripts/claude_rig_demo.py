@@ -53,7 +53,7 @@ def main():
                     str(REF / "blender_configurable_rig.py"), "--",
                     str(resolved), str(frames)], check=True)
     count = round(spec["fps"] * spec["duration"])
-    if not (frames / "f_0001.png").is_file() or not (frames / f"f_{count:04d}.png").is_file():
+    if args.frame is None and (not (frames / "f_0001.png").is_file() or not (frames / f"f_{count:04d}.png").is_file()):
         raise RuntimeError("Missing first or last rendered frame")
     if args.frame is not None:
         image = frames / ("preview_frame_%04d.png" % args.frame)
