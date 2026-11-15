@@ -22,7 +22,7 @@ def test_coordinate_rig_valid_and_joint_anchored(style, tmp_path):
         x0, y0, x1, y1 = meta["bbox"]
         jx, jy = meta["joint"]
         assert abs((jx - x0) / (x1 - x0) - part.pivot[0]) < 1e-6
-        assert abs((jy - y0) / (y1 - y0) - part.pivot[1]) < 1e-6
+        assert abs(1 - (jy - y0) / (y1 - y0) - part.pivot[1]) < 1e-6
         assert (jx, jy) == LAYOUT[part.id][1]
         with Image.open(folder / f"{part.id}.png") as image:
             assert image.size == (x1 - x0, y1 - y0)
