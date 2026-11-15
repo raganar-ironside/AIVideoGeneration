@@ -284,4 +284,9 @@ class Blender2DRenderer:
             staging_output.replace(output)
         finally:
             staging_output.unlink(missing_ok=True)
+        if self.preview:
+            from historyforgeai.application.services.preview_approval import preview_fingerprint
+            fingerprint = preview_fingerprint(job, plan)
+            (job / "preview_fingerprint.json").write_text(
+                json.dumps({"fingerprint": fingerprint}), encoding="utf-8")
         return str(output)
