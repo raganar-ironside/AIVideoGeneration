@@ -14,6 +14,11 @@ import bpy
 def material(path, name):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
+    # EEVEE must render alpha-masked PNGs instead of opaque rectangles.
+    if hasattr(m, "surface_render_method"):
+        m.surface_render_method = "DITHERED"
+    elif hasattr(m, "blend_method"):
+        m.blend_method = "HASHED"
     nodes = m.node_tree.nodes
     nodes.clear()
     texture = nodes.new("ShaderNodeTexImage")
