@@ -21,10 +21,20 @@ def preview_fingerprint(job_dir: Path, plan) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def preview_is_current(job_dir: Path, fingerprint: str) -> bool:
+    path = Path(job_dir) / "preview_fingerprint.json"
+    if not path.is_file():
+        return False
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("fingerprint") == fingerprint
+    except (ValueError, OSError):
+        return False
+
+
 def approve_preview(job_dir: Path, fingerprint: str) -> None:
     job_dir = Path(job_dir)
     preview = job_dir / "short_preview.mp4"
-    if not preview.is_file() or preview.stat().st_size == 0:
+    if not preview.is_file() or preview.stat().st_size == 0 or not preview_is_current(job_dir, fingerprint):
         raise ValueError("Generate a preview before approving it")
     (job_dir / "preview_approval.json").write_text(
         json.dumps({"fingerprint": fingerprint, "preview_hash": file_sha256(preview)}),
@@ -40,6 +50,6 @@ def is_preview_approved(job_dir: Path, fingerprint: str) -> bool:
         return False
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
-        return saved.get("fingerprint") == fingerprint and saved.get("preview_hash") == file_sha256(preview)
+        return preview_is_current(job_dir, fingerprint) and saved.get("fingerprint") == fingerprint and saved.get("preview_hash") == file_sha256(preview)
     except (OSError, ValueError, TypeError):
         return False
