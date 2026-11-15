@@ -71,6 +71,13 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
             raise RuntimeError("Speech generation failed")
         if not narration.is_file() or narration.stat().st_size <= 44:
             raise RuntimeError("Speech generation did not create valid narration")
+    if getattr(renderer, "preview", None) is False and (folder / "short_preview.mp4").exists():
+        from historyforgeai.application.services.preview_approval import (
+            preview_fingerprint, is_preview_approved,
+        )
+        fingerprint = preview_fingerprint(folder, plan)
+        if not is_preview_approved(folder, fingerprint):
+            raise ValueError("Approve the current Blender preview before final rendering")
     audio = str(narration) if narration.is_file() else None
     output = renderer.render(plan, str(folder), audio, motion=motion)
     if not preview:
