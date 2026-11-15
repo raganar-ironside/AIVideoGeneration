@@ -200,7 +200,9 @@ def render(spec, output_dir):
         obj = quad(scene, "overlay_" + name, layer["bounds"],
                    float(layer["z"]), assets / (name + ".png"),
                    float(layer.get("opacity", 1.0)))
-        obj.location = layer.get("location", [0, 0, 0])
+        location = layer.get("location", [0, 0])
+        obj.location.x, obj.location.y = float(location[0]), float(location[1])
+        # Preserve the layer's z-order even if a location is specified.
         objects[layer["id"]] = obj
 
     # Reusable environmental effects: any overlay can animate position,
@@ -216,6 +218,9 @@ def render(spec, output_dir):
             keyframes(obj, channel, points, fps, frames, easing=easing)
 
     for name, channels in spec.get("animation", {}).items():
+        if any(effect["id"] == name and set(effect.get("channels", {})) & set(channels)
+               for effect in effects):
+            raise ValueError("Effect and animation cannot keyframe the same channel: " + name)
         if name not in objects:
             raise ValueError("Animation references unknown object: " + name)
         for channel, points in channels.items():
