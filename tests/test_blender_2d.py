@@ -101,7 +101,12 @@ def test_symlink_outside_workspace_is_rejected(tmp_path):
     outside = tmp_path / "outside.png"
     make_transparent_png(outside)
     link = job / "arm.png"
-    link.symlink_to(outside)
+    try:
+        link.symlink_to(outside)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Creating symlinks requires Developer Mode or elevated privileges on Windows")
+        raise
     with pytest.raises(ValueError):
         resolve_cutout_asset(job, "arm.png")
 
@@ -140,7 +145,10 @@ def test_invalid_animation_keyframes_fail_closed():
 
 def test_missing_blender_explains_install(tmp_path, monkeypatch):
     job, plan = make_job(tmp_path)
-    monkeypatch.setattr(blender_2d.shutil, "which", lambda name: None if name == "blender" else "/usr/bin/" + name)
+    def missing_blender():
+        raise FileNotFoundError("blender not found")
+
+    monkeypatch.setattr(blender_2d, "blender_path", missing_blender)
     with pytest.raises(RuntimeError, match="Blender is required"):
         Blender2DRenderer().render(plan, str(job))
 
@@ -150,12 +158,11 @@ def test_missing_blender_explains_install(tmp_path, monkeypatch):
 def test_blender_mode_preserves_scene_frames_and_existing_output_contract(tmp_path, monkeypatch):
     job, plan = make_job(tmp_path, count=2)
     real_run = subprocess.run
-    real_which = shutil.which
-    monkeypatch.setattr(blender_2d.shutil, "which",
-                        lambda name: "/fake/blender" if name == "blender" else real_which(name))
+    fake_blender_path = Path("/fake/blender")
+    monkeypatch.setattr(blender_2d, "blender_path", lambda: fake_blender_path)
 
     def fake_blender(cmd, **kwargs):
-        if cmd[0] == "/fake/blender":
+        if Path(cmd[0]) == fake_blender_path:
             payload = json.loads(Path(cmd[-2]).read_text(encoding="utf-8"))
             frame_dir = Path(cmd[-1])
             frame_dir.mkdir(parents=True, exist_ok=True)
