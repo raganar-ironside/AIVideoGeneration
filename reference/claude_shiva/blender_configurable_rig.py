@@ -11,7 +11,7 @@ from pathlib import Path
 import bpy
 
 
-def material(path, name):
+def material(path, name, opacity=1.0):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     # EEVEE must render alpha-masked PNGs instead of opaque rectangles.
@@ -30,14 +30,18 @@ def material(path, name):
     output = nodes.new("ShaderNodeOutputMaterial")
     links = m.node_tree.links
     links.new(texture.outputs["Color"], emission.inputs["Color"])
-    links.new(texture.outputs["Alpha"], mix.inputs["Fac"])
+    alpha = nodes.new("ShaderNodeMath")
+    alpha.operation = "MULTIPLY"
+    alpha.inputs[1].default_value = float(opacity)
+    links.new(texture.outputs["Alpha"], alpha.inputs[0])
+    links.new(alpha.outputs[0], mix.inputs["Fac"])
     links.new(transparent.outputs[0], mix.inputs[1])
     links.new(emission.outputs[0], mix.inputs[2])
     links.new(mix.outputs[0], output.inputs["Surface"])
     return m
 
 
-def quad(scene, name, bounds, z, image_path):
+def quad(scene, name, bounds, z, image_path, opacity=1.0):
     x0, y0, x1, y1 = bounds
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([(x0, y0, 0), (x1, y0, 0),
@@ -47,7 +51,7 @@ def quad(scene, name, bounds, z, image_path):
     for loop, coord in zip(mesh.polygons[0].loop_indices,
                            ((0, 0), (1, 0), (1, 1), (0, 1))):
         uv.data[loop].uv = coord
-    mesh.materials.append(material(image_path, name + "_mat"))
+    mesh.materials.append(material(image_path, name + "_mat", opacity))
     obj = bpy.data.objects.new(name, mesh)
     scene.collection.objects.link(obj)
     obj.location.z = z
@@ -62,13 +66,19 @@ def empty(scene, name, parent=None, location=(0, 0, 0)):
     return obj
 
 
-def keyframes(obj, channel, points, fps, frame_count):
+def keyframes(obj, channel, points, fps, frame_count, easing="BEZIER"):
+    if easing not in ("BEZIER", "LINEAR", "CONSTANT"):
+        raise ValueError("Unsupported easing: " + easing)
     if channel == "rotation_deg":
         prop, index, converter = "rotation_euler", 2, math.radians
     elif channel == "x":
         prop, index, converter = "location", 0, float
     elif channel == "y":
         prop, index, converter = "location", 1, float
+    elif channel == "opacity":
+        prop, index, converter = None, None, float
+        nodes = obj.active_material.node_tree.nodes
+        target = next(n for n in nodes if n.type == "MATH" and n.operation == "MULTIPLY")
     else:
         raise ValueError("Unknown animation channel: " + channel)
     previous = -1
@@ -77,8 +87,24 @@ def keyframes(obj, channel, points, fps, frame_count):
         if frame <= previous:
             raise ValueError("Keyframe times must be strictly increasing")
         previous = frame
-        getattr(obj, prop)[index] = converter(value)
-        obj.keyframe_insert(data_path=prop, index=index, frame=frame)
+        if channel == "opacity":
+            if not 0 <= float(value) <= 1:
+                raise ValueError("Opacity must be between 0 and 1")
+            target.inputs[1].default_value = float(value)
+            target.inputs[1].keyframe_insert(data_path="default_value", frame=frame)
+        else:
+            getattr(obj, prop)[index] = converter(value)
+            obj.keyframe_insert(data_path=prop, index=index, frame=frame)
+    action = (obj.active_material.node_tree.animation_data.action
+              if channel == "opacity" else obj.animation_data.action)
+    # Blender 4.x/5.x expose fcurves through different action APIs.
+    if hasattr(action, "fcurves"):
+        for curve in action.fcurves:
+            for key in curve.keyframe_points:
+                key.interpolation = easing
+                if easing == "BEZIER":
+                    key.handle_left_type = "AUTO_CLAMPED"
+                    key.handle_right_type = "AUTO_CLAMPED"
 
 
 def render(spec, output_dir):
@@ -172,9 +198,22 @@ def render(spec, output_dir):
     for layer in spec.get("overlays", []):
         name = layer["asset"]
         obj = quad(scene, "overlay_" + name, layer["bounds"],
-                   float(layer["z"]), assets / (name + ".png"))
+                   float(layer["z"]), assets / (name + ".png"),
+                   float(layer.get("opacity", 1.0)))
         obj.location = layer.get("location", [0, 0, 0])
         objects[layer["id"]] = obj
+
+    # Reusable environmental effects: any overlay can animate position,
+    # rotation and opacity independently of the character rig.
+    effects = spec.get("effects", [])
+    for effect in effects:
+        name = effect["id"]
+        if name not in objects:
+            raise ValueError("Effect references unknown overlay: " + name)
+        obj = objects[name]
+        easing = effect.get("easing", "BEZIER").upper()
+        for channel, points in effect.get("channels", {}).items():
+            keyframes(obj, channel, points, fps, frames, easing=easing)
 
     for name, channels in spec.get("animation", {}).items():
         if name not in objects:
