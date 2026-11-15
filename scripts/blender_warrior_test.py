@@ -192,7 +192,7 @@ def main():
     scene.view_settings.view_transform = "Standard"
     scene.render.film_transparent = False
     scene.world = bpy.data.worlds.new("WarriorWorld")
-    scene.world.color = PALETTE["background"]
+    scene.world.color = PALETTE["background"][:3]
     camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     scene.collection.objects.link(camera)
     camera.location = (0, 0, 18)
