@@ -43,6 +43,7 @@ def main():
     story.add_argument('--apply', action='store_true', help='Apply only if every scene is approved')
     render_cmd = sub.add_parser("render", help="Render an existing approved storyboard")
     render_cmd.add_argument("--job", required=True, help="Existing job ID")
+    render_cmd.add_argument("--preview", action="store_true", help="Fast Blender preview; no narration resynthesis")
     render_cmd.add_argument("--generate-audio", action="store_true", help="Synthesize narration after approval")
     render_cmd.add_argument("--subtitles", choices=["on", "off"], default="off", help="Burn scene narration onto frames (default: off)")
     render_cmd.add_argument("--title-overlay", choices=["on", "off"], default="off", help="Show video title on frames (default: off)")
@@ -189,16 +190,20 @@ def main():
                 if any(value == "on" for value in (args.subtitles, args.title_overlay, args.watermark)):
                     raise ValueError("Blender 2D does not yet support subtitle/title/watermark overlays")
                 from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
-                renderer = Blender2DRenderer(config["width"], config["height"], config["fps"])
+                renderer = Blender2DRenderer(config["width"], config["height"], config["fps"], preview=args.preview)
             else:
+                if args.preview:
+                    raise ValueError("--preview currently requires --visual-style blender-2d")
                 renderer = FFmpegRenderer(config["width"], config["height"], config["fps"],
                                           subtitles=args.subtitles == "on",
                                           title_overlay=args.title_overlay == "on",
                                           watermark=args.watermark == "on")
             from historyforgeai.infrastructure.speech.factory import build_speech
+            if args.preview and (args.generate_audio or args.scene_audio):
+                raise ValueError("Preview reuses existing narration; do not pass --generate-audio or --scene-audio")
             speech = build_speech() if (args.generate_audio or args.scene_audio) else None
             print(render_approved_job(args.job, work, repo, renderer, motion=args.motion,
-                                      speech=speech, scene_audio=args.scene_audio))
+                                      speech=speech, scene_audio=args.scene_audio, preview=args.preview))
         except Exception as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(1)
