@@ -173,9 +173,20 @@ class Blender2DRenderer:
 
     def validate(self, plan: ShortPlan, job_dir: Path) -> None:
         """Fail before speech generation if Blender or any cutout asset is missing."""
-        blender_path()
-        ffmpeg_path()
-        find_executable("ffprobe", "FFPROBE_PATH")
+        try:
+            blender_path()
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Blender is required for --visual-style blender-2d "
+                "(install Blender 3.6+ or set BLENDER_PATH)"
+            ) from exc
+        try:
+            ffmpeg_path()
+            find_executable("ffprobe", "FFPROBE_PATH")
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "ffmpeg and ffprobe are required for Blender rendering"
+            ) from exc
         from historyforgeai.application.services.illustrated_assets import verify_approved_assets
         for scene in plan.scenes:
             verify_approved_assets(Path(job_dir), scene.index)
