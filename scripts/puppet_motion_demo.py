@@ -9,7 +9,10 @@ from pathlib import Path
 from historyforgeai.domain.models import Scene, ShortPlan
 from historyforgeai.infrastructure.assets.coordinate_puppet import generate_coordinate_puppet
 from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
-from blender_2d_demo import create_demo_assets
+try:
+    from scripts.blender_2d_demo import create_demo_assets
+except ModuleNotFoundError:
+    from blender_2d_demo import create_demo_assets
 
 
 def motion_rig(mode: str, rig: dict | None = None) -> dict:
