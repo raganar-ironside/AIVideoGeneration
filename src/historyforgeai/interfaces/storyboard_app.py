@@ -782,8 +782,6 @@ if st.button('Render with selected narration', disabled=not confirm_render):
         ]
         if not (visual_style == 'blender-2d' and preview_file.exists()):
             cmd.extend(['--generate-audio', '--scene-audio'])
-        cmd += [
-        ]
         result = subprocess.run(cmd, env=narration_env(), capture_output=True, text=True, timeout=1200)
         if result.returncode:
             st.error(result.stderr[-3000:] or result.stdout[-3000:])
