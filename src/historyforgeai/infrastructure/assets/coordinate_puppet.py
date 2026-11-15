@@ -57,7 +57,8 @@ def generate_coordinate_puppet(style: str, output_dir: Path) -> dict:
             raise ValueError(f"Part outside shared canvas: {name}")
         full.crop(crop).save(output_dir / f"{name}.png")
         px = (jx - crop[0]) / (crop[2] - crop[0])
-        py = (jy - crop[1]) / (crop[3] - crop[1])
+        # Blender sprite pivots use bottom-up Y; Pillow bounding boxes use top-down Y.
+        py = 1.0 - (jy - crop[1]) / (crop[3] - crop[1])
         if not (0 <= px <= 1 and 0 <= py <= 1):
             raise ValueError(f"Joint outside cropped part: {name}")
         part = {
