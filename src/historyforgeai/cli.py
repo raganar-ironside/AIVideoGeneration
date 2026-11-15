@@ -190,7 +190,7 @@ def main():
                 if any(value == "on" for value in (args.subtitles, args.title_overlay, args.watermark)):
                     raise ValueError("Blender 2D does not yet support subtitle/title/watermark overlays")
                 from historyforgeai.infrastructure.rendering.blender_2d import Blender2DRenderer
-                renderer = Blender2DRenderer(config["width"], config["height"], config["fps"], preview=args.preview)
+                renderer = Blender2DRenderer(1080, 1920, config["fps"], preview=args.preview)
             else:
                 if args.preview:
                     raise ValueError("--preview currently requires --visual-style blender-2d")
