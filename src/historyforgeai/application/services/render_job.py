@@ -11,7 +11,8 @@ from historyforgeai.domain.models import JobStatus, ShortPlan
 
 
 def render_approved_job(job_id: str, workspace: Path, repository, renderer,
-                        motion: str = "zoom_in", speech=None, scene_audio: bool = False) -> Path:
+                        motion: str = "zoom_in", speech=None, scene_audio: bool = False,
+                        preview: bool = False) -> Path:
     """Validate all approvals before any speech synthesis or rendering.
 
     With speech=None, retain the legacy behavior of reusing narration.wav if present.
@@ -32,6 +33,14 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
     # Optional renderer preflight: reject missing cutout assets before paid/slow TTS.
     if hasattr(renderer, "validate"):
         renderer.validate(plan, folder)
+    if getattr(renderer, "preview", None) is False and (folder / "short_preview.mp4").exists():
+        if speech is not None and scene_audio:
+            raise ValueError("Preview-approved renders must reuse existing scene narration; rerender preview if timing changes")
+        from historyforgeai.application.services.preview_approval import (
+            preview_fingerprint, is_preview_approved,
+        )
+        if not is_preview_approved(folder, preview_fingerprint(folder, plan)):
+            raise ValueError("Approve the current Blender preview before final rendering")
     narration = folder / "narration.wav"
     if speech is not None:
         if scene_audio:
@@ -72,7 +81,8 @@ def render_approved_job(job_id: str, workspace: Path, repository, renderer,
             raise RuntimeError("Speech generation did not create valid narration")
     audio = str(narration) if narration.is_file() else None
     output = renderer.render(plan, str(folder), audio, motion=motion)
-    job.video_path = output
-    job.status = JobStatus.RENDERED
-    repository.save(job)
+    if not preview:
+        job.video_path = output
+        job.status = JobStatus.RENDERED
+        repository.save(job)
     return Path(output)
