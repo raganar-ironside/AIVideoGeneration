@@ -47,3 +47,28 @@ def test_preview_cli_and_eevee_support_are_present():
     assert '"BLENDER_EEVEE"' in renderer
     assert 'bpy.ops.render.render(write_still=True)' in renderer
     assert 'm.surface_render_method = "DITHERED"' in renderer
+
+
+def test_reusable_effects_are_valid_and_water_is_not_double_animated():
+    spec = json.loads((REF / "scenes" / "shiva_five_second.json").read_text())
+    overlays = {layer["id"]: layer for layer in spec["overlays"]}
+    assert "water" not in spec["animation"]
+    assert spec["effects"]
+    for effect in spec["effects"]:
+        assert effect["id"] in overlays
+        assert effect["easing"] in ("BEZIER", "LINEAR", "CONSTANT")
+        for channel, points in effect["channels"].items():
+            assert channel in ("x", "y", "rotation_deg", "opacity")
+            times = [point[0] for point in points]
+            assert times == sorted(set(times))
+            assert all(0 <= t <= spec["duration"] for t in times)
+            if channel == "opacity":
+                assert all(0 <= value <= 1 for _, value in points)
+    assert spec["effects"][0]["channels"]["y"][-1][1] < 0
+
+
+def test_effects_renderer_supports_alpha_keyframes():
+    renderer = (REF / "blender_configurable_rig.py").read_text()
+    assert 'elif channel == "opacity":' in renderer
+    assert 'spec.get("effects", [])' in renderer
+    assert 'key.handle_left_type = "AUTO_CLAMPED"' in renderer
